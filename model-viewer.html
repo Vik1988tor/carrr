@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>3D Model Viewer v2.0</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: #1a1a1a;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .controls-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+            backdrop-filter: blur(10px);
+            max-width: 280px;
+        }
+
+        .controls-panel h3 {
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .control-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .control-item::before {
+            content: "•";
+            margin-right: 10px;
+            color: #4a9eff;
+            font-size: 20px;
+        }
+
+        .reset-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(74, 158, 255, 0.9);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .reset-button:hover {
+            background: rgba(74, 158, 255, 1);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
+        }
+
+        .reset-button:active {
+            transform: translateY(0);
+        }
+
+        .download-button {
+            position: absolute;
+            top: 20px;
+            right: 120px;
+            background: rgba(46, 204, 113, 0.9);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .download-button:hover {
+            background: rgba(46, 204, 113, 1);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(46, 204, 113, 0.4);
+        }
+
+        .download-button:active {
+            transform: translateY(0);
+        }
+
+        .color-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            color: white;
+            min-width: 250px;
+        }
+
+        .color-controls h3 {
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        #colorSlider {
+            width: 100%;
+            height: 20px;
+            border-radius: 10px;
+            background: linear-gradient(to right,
+                hsl(0, 100%, 50%),
+                hsl(60, 100%, 50%),
+                hsl(120, 100%, 50%),
+                hsl(180, 100%, 50%),
+                hsl(240, 100%, 50%),
+                hsl(300, 100%, 50%),
+                hsl(360, 100%, 50%));
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+
+        #colorSlider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: white;
+            border: 3px solid #000;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        #colorSlider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        #colorSlider::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: white;
+            border: 3px solid #000;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        #colorSlider::-moz-range-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .color-preview {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            margin-top: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .color-presets {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .color-preset-btn {
+            width: 100%;
+            aspect-ratio: 1;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .color-preset-btn:hover {
+            transform: scale(1.1);
+            border-color: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+        }
+
+        .color-preset-btn:active {
+            transform: scale(0.95);
+        }
+
+        .color-preset-btn.active {
+            border-color: #4a9eff;
+            border-width: 3px;
+            box-shadow: 0 0 20px rgba(74, 158, 255, 0.6);
+        }
+
+        .camera-presets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .camera-preset-btn {
+            flex: 1 1 calc(33.333% - 4px);
+            padding: 8px 4px;
+            background: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s;
+        }
+
+        .camera-preset-btn:hover {
+            background: #4a4a4a;
+            border-color: #00AADC;
+        }
+
+        .camera-preset-btn.active {
+            background: #00AADC;
+            border-color: #00AADC;
+        }
+
+        .lighting-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            color: white;
+            min-width: 250px;
+        }
+
+        .lighting-controls h3 {
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .switch-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+        }
+
+        .switch-container label {
+            font-size: 13px;
+            color: #4a9eff;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            min-width: 50px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider-switch {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 100, 100, 0.8);
+            transition: 0.4s;
+            border-radius: 24px;
+        }
+
+        .slider-switch:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider-switch {
+            background-color: rgba(74, 158, 255, 0.8);
+        }
+
+        input:checked + .slider-switch:before {
+            transform: translateX(26px);
+        }
+
+        .slider-switch:hover {
+            background-color: rgba(255, 100, 100, 1);
+        }
+
+        input:checked + .slider-switch:hover {
+            background-color: rgba(74, 158, 255, 1);
+        }
+
+        .light-sphere-container {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            margin: 15px auto;
+            background: radial-gradient(circle at center, rgba(50, 50, 50, 0.3), rgba(20, 20, 20, 0.5));
+            border-radius: 50%;
+            border: 2px solid rgba(74, 158, 255, 0.3);
+            cursor: move;
+            user-select: none;
+        }
+
+        .light-indicator {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: radial-gradient(circle, #ffeb3b, #ff9800);
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 20px rgba(255, 235, 59, 0.8), 0 0 40px rgba(255, 235, 59, 0.4);
+            cursor: grab;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s ease;
+            z-index: 10;
+        }
+
+        .light-indicator:active {
+            cursor: grabbing;
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+
+        .sphere-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 30px;
+            height: 30px;
+            background: rgba(74, 158, 255, 0.2);
+            border: 2px solid rgba(74, 158, 255, 0.5);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        .light-info {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+            position: relative;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: #4a9eff;
+        }
+
+        .reset-param-btn {
+            position: absolute;
+            right: 0;
+            top: 0;
+            background: rgba(255, 100, 100, 0.8);
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .reset-param-btn:hover {
+            background: rgba(255, 100, 100, 1);
+            transform: scale(1.05);
+        }
+
+        .reset-param-btn:active {
+            transform: scale(0.95);
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.3);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #4a9eff;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb:hover {
+            background: #6bb3ff;
+            transform: scale(1.2);
+        }
+
+        .control-group input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #4a9eff;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+
+        .control-group input[type="range"]::-moz-range-thumb:hover {
+            background: #6bb3ff;
+            transform: scale(1.2);
+        }
+
+        .value-display {
+            display: inline-block;
+            margin-left: 8px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 18px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px 40px;
+            border-radius: 10px;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <button class="download-button" id="downloadBtn">Скачать PNG</button>
+    <button class="reset-button" id="resetBtn">Сброс</button>
+
+    <div class="color-controls">
+        <h3>Цвет модели</h3>
+
+        <div class="control-group">
+            <label>Контрастность<span class="value-display" id="contrastValue">1.0</span></label>
+            <button class="reset-param-btn" id="resetContrast">Сброс</button>
+            <input type="range" id="contrastSlider" min="0.5" max="2.0" value="1.0" step="0.1">
+        </div>
+
+        <div class="control-group">
+            <label>Стандартные цвета</label>
+            <div class="color-presets">
+                <button class="color-preset-btn" data-color="#00AADC" style="background: #00AADC;" title="Голубой"></button>
+                <button class="color-preset-btn" data-color="#F0F0F0" style="background: #F0F0F0;" title="Белый"></button>
+                <button class="color-preset-btn" data-color="#141414" style="background: #141414;" title="Черный"></button>
+                <button class="color-preset-btn" data-color="#3C2878" style="background: #3C2878;" title="Фиолетовый"></button>
+                <button class="color-preset-btn" data-color="#39B4BF" style="background: #39B4BF;" title="Бирюзовый"></button>
+                <button class="color-preset-btn" data-color="#FFC800" style="background: #FFC800;" title="Желтый"></button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Оттенок<span class="value-display" id="hueValue">0°</span></label>
+            <button class="reset-param-btn" id="resetColor">Сброс</button>
+            <input type="range" id="colorSlider" min="0" max="360" value="0" step="1">
+            <div class="color-preview" id="colorPreview"></div>
+        </div>
+
+        <div class="control-group">
+            <label>Шероховатость<span class="value-display" id="roughnessValue">0.50</span></label>
+            <button class="reset-param-btn" id="resetRoughness">Сброс</button>
+            <input type="range" id="roughnessSlider" min="0" max="1" value="0.5" step="0.01">
+        </div>
+
+        <div class="control-group">
+            <label>Металличность<span class="value-display" id="metalnessValue">0.00</span></label>
+            <button class="reset-param-btn" id="resetMetalness">цулацлуа</button>
+            <input type="range" id="metalnessSlider" min="0" max="1" value="0.0" step="0.01">
+        </div>
+    </div>
+
+    <div class="lighting-controls">
+        <h3>Управление освещением</h3>
+
+        <div class="switch-container">
+            <label for="lightModeSwitch">Свет привязан к модели</label>
+            <label class="switch">
+                <input type="checkbox" id="lightModeSwitch">
+                <span class="slider-switch"></span>
+            </label>
+        </div>
+
+        <div class="light-sphere-container" id="lightSphere">
+            <div class="sphere-center"></div>
+            <div class="light-indicator" id="lightIndicator"></div>
+        </div>
+        <div class="light-info">
+            <div>Угол: <span id="angleValue">0°</span> | Высота: <span id="elevationValue">45°</span></div>
+            <button class="reset-param-btn" id="resetPosition" style="position: relative; margin-top: 8px;">Сброс позиции</button>
+        </div>
+
+        <div class="control-group">
+            <label>Расстояние<span class="value-display" id="distanceValue">7.5</span></label>
+            <button class="reset-param-btn" id="resetDistance">Сброс</button>
+            <input type="range" id="lightDistance" min="3" max="15" value="7.5" step="0.5">
+        </div>
+
+        <div class="control-group">
+            <label>Яркость<span class="value-display" id="intensityValue">200</span></label>
+            <button class="reset-param-btn" id="resetIntensity">Сброс</button>
+            <input type="range" id="lightIntensity" min="0" max="500" value="200" step="10">
+        </div>
+
+        <div class="control-group">
+            <label>Температура света<span class="value-display" id="temperatureValue">5500K</span></label>
+            <button class="reset-param-btn" id="resetTemperature">Сброс</button>
+            <input type="range" id="lightTemperature" min="2700" max="6500" value="5500" step="100">
+        </div>
+
+        <div class="control-group">
+            <label>Цвет освещения</label>
+            <button class="reset-param-btn" id="resetLightColor">Сброс</button>
+            <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                <input type="color" id="lightColorPicker" value="#ffffff" style="width: 50px; height: 35px; border: none; border-radius: 6px; cursor: pointer; background: transparent;">
+                <div class="light-color-presets" style="display: flex; gap: 6px;">
+                    <button class="light-color-btn" data-color="#ffffff" style="width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: #ffffff; cursor: pointer;" title="Белый"></button>
+                    <button class="light-color-btn" data-color="#ffaa55" style="width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: #ffaa55; cursor: pointer;" title="Тёплый"></button>
+                    <button class="light-color-btn" data-color="#aaccff" style="width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: #aaccff; cursor: pointer;" title="Холодный"></button>
+                    <button class="light-color-btn" data-color="#ff6666" style="width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: #ff6666; cursor: pointer;" title="Красный"></button>
+                    <button class="light-color-btn" data-color="#66ff66" style="width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: #66ff66; cursor: pointer;" title="Зелёный"></button>
+                    <button class="light-color-btn" data-color="#6666ff" style="width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: #6666ff; cursor: pointer;" title="Синий"></button>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Ракурс камеры</label>
+            <div class="camera-presets">
+                <button class="camera-preset-btn" data-preset="front34" title="Передний 3/4">3/4 ↗</button>
+                <button class="camera-preset-btn" data-preset="rear34" title="Задний 3/4">3/4 ↙</button>
+                <button class="camera-preset-btn" data-preset="side" title="Профиль">Профиль</button>
+                <button class="camera-preset-btn" data-preset="front" title="Спереди">Спереди</button>
+                <button class="camera-preset-btn" data-preset="back" title="Сзади">Сзади</button>
+                <button class="camera-preset-btn" data-preset="low" title="Низкий угол">Низкий</button>
+                <button class="camera-preset-btn" data-preset="top" title="Сверху">Сверху</button>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="loading" id="loading">Загрузка модели</div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // Инициализация сцены
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+
+        // Настройка камеры
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(5, 5, 5);
+
+        // Настройка рендерера
+        const renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: true,
+            preserveDrawingBuffer: true
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.outputColorSpace = THREE.SRGBColorSpace; // Правильное цветовое пространство
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // Настройка OrbitControls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.15; // Увеличено для более быстрого отклика
+        controls.rotateSpeed = 1.5; // Увеличена скорость вращения
+        controls.zoomSpeed = 1.2; // Ускорен зум
+        controls.panSpeed = 1.2; // Ускорено панорамирование
+        controls.screenSpacePanning = false;
+        controls.minDistance = 1;
+        controls.maxDistance = 100;
+
+        // Сохранение начальной позиции камеры
+        const initialCameraPosition = camera.position.clone();
+        const initialControlsTarget = new THREE.Vector3(0, 0, 0);
+
+        // Пресеты камеры для эффектных фото
+        const cameraPresets = {
+            front34: {
+                position: { x: 6, y: 3, z: 6 },
+                target: { x: 0, y: 0, z: 0 }
+            },
+            rear34: {
+                position: { x: -6, y: 3, z: -6 },
+                target: { x: 0, y: 0, z: 0 }
+            },
+            side: {
+                position: { x: 0, y: 2, z: 8 },
+                target: { x: 0, y: 0, z: 0 }
+            },
+            front: {
+                position: { x: -8, y: 2, z: 0 },
+                target: { x: 0, y: 0, z: 0 }
+            },
+            back: {
+                position: { x: 8, y: 2, z: 0 },
+                target: { x: 0, y: 0, z: 0 }
+            },
+            low: {
+                position: { x: 5, y: 0.5, z: 5 },
+                target: { x: 0, y: 1, z: 0 }
+            },
+            top: {
+                position: { x: 0, y: 10, z: 0.1 },
+                target: { x: 0, y: 0, z: 0 }
+            }
+        };
+
+        // Освещение
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        // Основной управляемый свет - используем PointLight для затухания
+        const pointLight = new THREE.PointLight(0xffffff, 200, 0, 1);
+        // intensity: базовая яркость
+        // distance: 0 = бесконечность
+        // decay: 1 = линейное затухание (меньше физически правильного, но больше света на расстоянии)
+        pointLight.position.set(5, 10, 7.5);
+        scene.add(pointLight);
+
+        // Визуальный помощник для отображения позиции света
+        const lightHelper = new THREE.Mesh(
+            new THREE.SphereGeometry(0.2, 16, 16),
+            new THREE.MeshBasicMaterial({
+                color: 0xffeb3b,
+                emissive: 0xffeb3b,
+                emissiveIntensity: 1
+            })
+        );
+        scene.add(lightHelper);
+
+        // Вспомогательный свет (статичный) - теперь тоже PointLight для консистентности
+        const fillLight = new THREE.PointLight(0xffffff, 30, 0, 1);
+        fillLight.position.set(-5, 5, -5);
+        scene.add(fillLight);
+
+        // Параметры освещения (значения по умолчанию)
+        const defaultLightParams = {
+            angle: 0,
+            elevation: 45, // В градусах (0-90)
+            distance: 7.5,
+            intensity: 200, // Базовая интенсивность для PointLight
+            temperature: 5500 // Кельвины (2700 - теплый, 6500 - холодный)
+        };
+
+        let lightAngle = defaultLightParams.angle;
+        let lightElevation = defaultLightParams.elevation;
+        let lightDistance = defaultLightParams.distance;
+        let isLightAttachedToModel = false; // Режим привязки света к модели
+
+        // Сохраняем базовую позицию света в мировых координатах
+        let baseLightPosition = new THREE.Vector3();
+        let initialCameraRotation = new THREE.Quaternion();
+
+        // Функция вычисления позиции света по углам
+        function calculateLightPosition(angle, elevation, distance) {
+            const angleRad = (angle * Math.PI) / 180;
+            const elevationRad = (elevation * Math.PI) / 180;
+            const radius = distance;
+
+            const x = radius * Math.cos(elevationRad) * Math.cos(angleRad);
+            const y = radius * Math.sin(elevationRad);
+            const z = radius * Math.cos(elevationRad) * Math.sin(angleRad);
+
+            return new THREE.Vector3(x, y, z);
+        }
+
+        // Функция обновления позиции света
+        function updateLightPosition() {
+            // Вычисляем новую базовую позицию
+            baseLightPosition = calculateLightPosition(lightAngle, lightElevation, lightDistance);
+
+            // Применяем позицию
+            applyLightPosition();
+        }
+
+        function applyLightPosition() {
+            if (isLightAttachedToModel) {
+                // Режим: свет вращается вместе с видом (относительно камеры)
+                // Преобразуем базовую позицию света в пространство камеры
+                const lightPosInCameraSpace = baseLightPosition.clone();
+
+                // Получаем поворот камеры относительно начальной позиции
+                const cameraRotation = new THREE.Quaternion();
+                camera.getWorldQuaternion(cameraRotation);
+
+                // Применяем поворот камеры к позиции света
+                lightPosInCameraSpace.applyQuaternion(cameraRotation);
+
+                pointLight.position.copy(lightPosInCameraSpace);
+                lightHelper.position.copy(lightPosInCameraSpace);
+            } else {
+                // Режим: свет остается на месте в мировых координатах
+                pointLight.position.copy(baseLightPosition);
+                lightHelper.position.copy(baseLightPosition);
+            }
+        }
+
+        // Функция преобразования температуры в цвет
+        function temperatureToColor(kelvin) {
+            // Алгоритм преобразования температуры в RGB
+            // Основан на формуле Tanner Helland
+            const temp = kelvin / 100;
+            let red, green, blue;
+
+            // Расчет красного
+            if (temp <= 66) {
+                red = 255;
+            } else {
+                red = temp - 60;
+                red = 329.698727446 * Math.pow(red, -0.1332047592);
+                red = Math.max(0, Math.min(255, red));
+            }
+
+            // Расчет зеленого
+            if (temp <= 66) {
+                green = temp;
+                green = 99.4708025861 * Math.log(green) - 161.1195681661;
+            } else {
+                green = temp - 60;
+                green = 288.1221695283 * Math.pow(green, -0.0755148492);
+            }
+            green = Math.max(0, Math.min(255, green));
+
+            // Расчет синего
+            if (temp >= 66) {
+                blue = 255;
+            } else if (temp <= 19) {
+                blue = 0;
+            } else {
+                blue = temp - 10;
+                blue = 138.5177312231 * Math.log(blue) - 305.0447927307;
+                blue = Math.max(0, Math.min(255, blue));
+            }
+
+            return new THREE.Color(red / 255, green / 255, blue / 255);
+        }
+
+        // Функция анимации камеры к пресету
+        function animateCameraToPreset(presetName) {
+            const preset = cameraPresets[presetName];
+            if (!preset) return;
+
+            const startPosition = camera.position.clone();
+            const startTarget = controls.target.clone();
+            const endTarget = new THREE.Vector3(preset.target.x, preset.target.y, preset.target.z);
+
+            // Сохраняем текущее расстояние от камеры до target
+            const currentDistance = startPosition.distanceTo(startTarget);
+
+            // Направление из пресета (нормализуем)
+            const direction = new THREE.Vector3(preset.position.x, preset.position.y, preset.position.z).normalize();
+
+            // Конечная позиция = target + направление * текущее расстояние
+            const endPosition = endTarget.clone().add(direction.multiplyScalar(currentDistance));
+
+            const duration = 1200;
+            const startTime = performance.now();
+
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                // ease-in-out cubic для более плавного движения
+                const eased = progress < 0.5
+                    ? 4 * progress * progress * progress
+                    : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+                camera.position.lerpVectors(startPosition, endPosition, eased);
+                controls.target.lerpVectors(startTarget, endTarget, eased);
+                controls.update();
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Обработчики контролов освещения
+        const distanceSlider = document.getElementById('lightDistance');
+        const intensitySlider = document.getElementById('lightIntensity');
+        const temperatureSlider = document.getElementById('lightTemperature');
+
+        const angleValue = document.getElementById('angleValue');
+        const elevationValue = document.getElementById('elevationValue');
+        const distanceValue = document.getElementById('distanceValue');
+        const intensityValue = document.getElementById('intensityValue');
+        const temperatureValue = document.getElementById('temperatureValue');
+
+        // Интерактивная сфера для управления светом
+        const lightSphere = document.getElementById('lightSphere');
+        const lightIndicator = document.getElementById('lightIndicator');
+
+        function updateIndicatorPosition() {
+            const sphereRadius = 100; // Радиус сферы в пикселях
+            const angleRad = (lightAngle * Math.PI) / 180;
+            const elevationRad = (lightElevation * Math.PI) / 180;
+
+            // Проекция на 2D круг
+            const x = sphereRadius * Math.cos(elevationRad) * Math.cos(angleRad);
+            const z = sphereRadius * Math.cos(elevationRad) * Math.sin(angleRad);
+
+            lightIndicator.style.left = (sphereRadius + x) + 'px';
+            lightIndicator.style.top = (sphereRadius - z) + 'px';
+
+            angleValue.textContent = Math.round(lightAngle) + '°';
+            elevationValue.textContent = Math.round(lightElevation) + '°';
+        }
+
+        let isDragging = false;
+
+        lightIndicator.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            const rect = lightSphere.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+
+            const deltaX = e.clientX - centerX;
+            const deltaY = centerY - e.clientY; // Инвертируем Y
+
+            // Вычисляем угол и высоту
+            lightAngle = Math.atan2(deltaY, deltaX) * 180 / Math.PI;
+
+            // Нормализация угла (0-360)
+            if (lightAngle < 0) lightAngle += 360;
+
+            // Вычисляем расстояние от центра
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const maxDistance = rect.width / 2;
+
+            // Высота (elevation): чем ближе к центру, тем выше (90°), чем дальше - тем ниже (0°)
+            lightElevation = Math.max(0, Math.min(90, (1 - distance / maxDistance) * 90));
+
+            updateIndicatorPosition();
+            updateLightPosition();
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        distanceSlider.addEventListener('input', (e) => {
+            lightDistance = parseFloat(e.target.value);
+            distanceValue.textContent = lightDistance;
+            updateLightPosition();
+        });
+
+        intensitySlider.addEventListener('input', (e) => {
+            const intensity = parseFloat(e.target.value);
+            pointLight.intensity = intensity;
+            intensityValue.textContent = intensity.toFixed(1);
+        });
+
+        temperatureSlider.addEventListener('input', (e) => {
+            const temperature = parseInt(e.target.value);
+            const color = temperatureToColor(temperature);
+            pointLight.color.copy(color);
+            temperatureValue.textContent = temperature + 'K';
+        });
+
+        // Кнопки сброса параметров освещения
+        document.getElementById('resetPosition').addEventListener('click', () => {
+            lightAngle = defaultLightParams.angle;
+            lightElevation = defaultLightParams.elevation;
+            updateIndicatorPosition();
+            updateLightPosition();
+        });
+
+        document.getElementById('resetDistance').addEventListener('click', () => {
+            lightDistance = defaultLightParams.distance;
+            distanceSlider.value = lightDistance;
+            distanceValue.textContent = lightDistance;
+            updateLightPosition();
+        });
+
+        document.getElementById('resetIntensity').addEventListener('click', () => {
+            const intensity = defaultLightParams.intensity;
+            intensitySlider.value = intensity;
+            pointLight.intensity = intensity;
+            intensityValue.textContent = intensity.toFixed(1);
+        });
+
+        document.getElementById('resetTemperature').addEventListener('click', () => {
+            const temperature = defaultLightParams.temperature;
+            temperatureSlider.value = temperature;
+            const color = temperatureToColor(temperature);
+            pointLight.color.copy(color);
+            temperatureValue.textContent = temperature + 'K';
+            // Обновляем color picker
+            lightColorPicker.value = '#' + color.getHexString();
+        });
+
+        // Управление цветом освещения
+        const lightColorPicker = document.getElementById('lightColorPicker');
+        const lightColorBtns = document.querySelectorAll('.light-color-btn');
+        const defaultLightColor = '#ffffff';
+
+        lightColorPicker.addEventListener('input', (e) => {
+            const color = new THREE.Color(e.target.value);
+            pointLight.color.copy(color);
+            // Обновляем визуальный помощник
+            lightHelper.material.color.copy(color);
+        });
+
+        // Пресеты цвета освещения
+        lightColorBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const hexColor = btn.getAttribute('data-color');
+                const color = new THREE.Color(hexColor);
+                pointLight.color.copy(color);
+                lightHelper.material.color.copy(color);
+                lightColorPicker.value = hexColor;
+            });
+        });
+
+        // Сброс цвета освещения
+        document.getElementById('resetLightColor').addEventListener('click', () => {
+            const color = new THREE.Color(defaultLightColor);
+            pointLight.color.copy(color);
+            lightHelper.material.color.copy(color);
+            lightColorPicker.value = defaultLightColor;
+            // Сбрасываем температуру на нейтральную
+            temperatureSlider.value = 5500;
+            temperatureValue.textContent = '5500K';
+        });
+
+        // Инициализация позиции индикатора
+        updateIndicatorPosition();
+
+        // Обработчик переключателя режима света
+        const lightModeSwitch = document.getElementById('lightModeSwitch');
+        lightModeSwitch.addEventListener('change', (e) => {
+            isLightAttachedToModel = e.target.checked;
+
+            if (isLightAttachedToModel) {
+                // При включении режима сохраняем текущую ротацию камеры как базовую
+                camera.getWorldQuaternion(initialCameraRotation);
+            }
+
+            applyLightPosition();
+        });
+
+        // Загрузка GLTF модели
+        const loader = new GLTFLoader();
+        const loadingElement = document.getElementById('loading');
+        let loadedModel = null; // Сохраняем ссылку на модель
+
+        loader.load(
+            'modelCinema.gltf',
+            (gltf) => {
+                const model = gltf.scene;
+                loadedModel = model; // Сохраняем модель для дальнейшего использования
+
+                // Вычисление bounding box для центрирования и масштабирования
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+
+                // Центрирование модели
+                model.position.sub(center);
+
+                // Масштабирование модели, если она слишком большая или маленькая
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 4 / maxDim;
+                model.scale.setScalar(scale);
+
+                scene.add(model);
+
+                // Настройка камеры на основе размера модели (крупный план)
+                const distance = maxDim * 0.9;
+                camera.position.set(distance, distance, distance);
+                camera.lookAt(0, 0, 0);
+                controls.target.set(0, 0, 0);
+
+                // Обновление начальной позиции после загрузки модели
+                initialCameraPosition.copy(camera.position);
+
+                // Установка светло-серого цвета по умолчанию
+                setModelColor(defaultLightGray);
+
+                // Инициализация свойств материала
+                updateMaterialProperties();
+
+                // Инициализируем позицию света
+                updateLightPosition();
+
+                // Скрытие индикатора загрузки
+                loadingElement.style.display = 'none';
+
+                console.log('Модель успешно загружена');
+            },
+            (progress) => {
+                const percent = (progress.loaded / progress.total * 100).toFixed(0);
+                console.log(`Загрузка: ${percent}%`);
+            },
+            (error) => {
+                console.error('Ошибка загрузки модели:', error);
+                loadingElement.textContent = 'Ошибка загрузки модели. Проверьте путь к файлу.';
+                loadingElement.style.background = 'rgba(200, 0, 0, 0.8)';
+            }
+        );
+
+        // Управление цветом модели
+        const colorSlider = document.getElementById('colorSlider');
+        const colorPreview = document.getElementById('colorPreview');
+        const hueValue = document.getElementById('hueValue');
+        const defaultHue = -1; // -1 означает светло-серый цвет по умолчанию
+        const defaultLightGray = new THREE.Color(0xcccccc); // Светло-серый цвет
+
+        // Контрастность
+        const contrastSlider = document.getElementById('contrastSlider');
+        const contrastValue = document.getElementById('contrastValue');
+        const defaultContrast = 1.0;
+        let currentContrast = defaultContrast;
+        let currentBaseColor = defaultLightGray.clone(); // Храним базовый цвет без контраста
+
+        // Применение контраста к цвету
+        function applyContrast(baseColor, contrast) {
+            const color = baseColor.clone();
+
+            // Преобразуем в HSL для более естественного контраста
+            const hsl = {};
+            color.getHSL(hsl);
+
+            // Изменяем светлость (lightness) для контраста
+            // Контраст работает как множитель отклонения от средней точки (0.5)
+            hsl.l = 0.5 + (hsl.l - 0.5) * contrast;
+            hsl.l = Math.max(0, Math.min(1, hsl.l)); // Ограничиваем диапазон
+
+            color.setHSL(hsl.h, hsl.s, hsl.l);
+            return color;
+        }
+
+        function setModelColor(color) {
+            if (!loadedModel) return;
+
+            // Сохраняем базовый цвет
+            currentBaseColor = color.clone();
+
+            // Применяем контраст
+            const finalColor = applyContrast(currentBaseColor, currentContrast);
+
+            loadedModel.traverse((child) => {
+                if (child.isMesh) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach((mat) => {
+                            if (mat.isMaterial) {
+                                mat.color.copy(finalColor);
+                                mat.needsUpdate = true;
+                            }
+                        });
+                    } else if (child.material && child.material.isMaterial) {
+                        child.material.color.copy(finalColor);
+                        child.material.needsUpdate = true;
+                    }
+                }
+            });
+        }
+
+        function updateModelColor(hue) {
+            let baseColor;
+            if (hue === -1) {
+                // Сброс на светло-серый
+                baseColor = defaultLightGray.clone();
+                colorPreview.style.backgroundColor = '#cccccc';
+                hueValue.textContent = 'серый';
+            } else {
+                // Применение цвета из спектра
+                baseColor = new THREE.Color().setHSL(hue / 360, 1, 0.5);
+                colorPreview.style.backgroundColor = `hsl(${hue}, 100%, 50%)`;
+                hueValue.textContent = hue + '°';
+            }
+            setModelColor(baseColor);
+        }
+
+        // Проверка поддержки PBR свойств материалом
+        function supportsPBRProperties(material) {
+            return material.isMeshStandardMaterial ||
+                   material.isMeshPhysicalMaterial ||
+                   (material.roughness !== undefined && material.metalness !== undefined);
+        }
+
+        // Главная функция обновления свойств материала
+        function updateMaterialProperties() {
+            if (!loadedModel) return;
+
+            loadedModel.traverse((child) => {
+                if (child.isMesh) {
+                    const materials = Array.isArray(child.material)
+                        ? child.material
+                        : [child.material];
+
+                    materials.forEach((mat) => {
+                        if (!mat || !mat.isMaterial) return;
+
+                        // roughness и metalness только для PBR материалов
+                        if (supportsPBRProperties(mat)) {
+                            mat.roughness = currentRoughness;
+                            mat.metalness = currentMetalness;
+                        }
+
+                        mat.needsUpdate = true;
+                    });
+                }
+            });
+        }
+
+        let isGrayMode = true; // Флаг режима серого цвета
+
+        // Свойства материала (значения по умолчанию)
+        const defaultMaterialProps = {
+            roughness: 0.5,
+            metalness: 0.0
+        };
+
+        let currentRoughness = defaultMaterialProps.roughness;
+        let currentMetalness = defaultMaterialProps.metalness;
+
+        colorSlider.addEventListener('input', (e) => {
+            const hue = parseFloat(e.target.value);
+            isGrayMode = false; // Выходим из режима серого цвета при движении слайдера
+
+            // Создаем базовый цвет и применяем его через setModelColor (который учитывает контраст)
+            const baseColor = new THREE.Color().setHSL(hue / 360, 1, 0.5);
+            setModelColor(baseColor);
+            colorPreview.style.backgroundColor = `hsl(${hue}, 100%, 50%)`;
+            hueValue.textContent = hue + '°';
+
+            // Снимаем выделение с пресетов
+            if (activePresetBtn) {
+                activePresetBtn.classList.remove('active');
+                activePresetBtn = null;
+            }
+        });
+
+        // Кнопка сброса цвета
+        document.getElementById('resetColor').addEventListener('click', () => {
+            isGrayMode = true;
+            colorSlider.value = 0; // Возвращаем слайдер на 0
+
+            // Применяем серый цвет через setModelColor (который учитывает контраст)
+            const baseColor = defaultLightGray.clone();
+            setModelColor(baseColor);
+            colorPreview.style.backgroundColor = '#cccccc';
+            hueValue.textContent = 'серый';
+
+            // Снимаем выделение с пресетов
+            if (activePresetBtn) {
+                activePresetBtn.classList.remove('active');
+                activePresetBtn = null;
+            }
+        });
+
+        // Инициализация цвета превью
+        colorPreview.style.backgroundColor = '#cccccc';
+        hueValue.textContent = 'серый';
+
+        // Обработчик контрастности
+        contrastSlider.addEventListener('input', (e) => {
+            currentContrast = parseFloat(e.target.value);
+            contrastValue.textContent = currentContrast.toFixed(1);
+            // Применяем текущий цвет с новой контрастностью
+            setModelColor(currentBaseColor);
+        });
+
+        // Кнопка сброса контрастности
+        document.getElementById('resetContrast').addEventListener('click', () => {
+            currentContrast = defaultContrast;
+            contrastSlider.value = defaultContrast;
+            contrastValue.textContent = defaultContrast.toFixed(1);
+            setModelColor(currentBaseColor);
+        });
+
+        // Обработчики для стандартных цветов
+        const colorPresetBtns = document.querySelectorAll('.color-preset-btn');
+        let activePresetBtn = null;
+
+        colorPresetBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const hexColor = btn.getAttribute('data-color');
+                const color = new THREE.Color(hexColor);
+
+                // Применяем цвет
+                setModelColor(color);
+
+                // Обновляем превью
+                colorPreview.style.backgroundColor = hexColor;
+                hueValue.textContent = 'пресет';
+
+                // Сбрасываем слайдер
+                isGrayMode = false;
+                colorSlider.value = 0;
+
+                // Обновляем активную кнопку
+                if (activePresetBtn) {
+                    activePresetBtn.classList.remove('active');
+                }
+                btn.classList.add('active');
+                activePresetBtn = btn;
+            });
+        });
+
+        // Обработчики для пресетов камеры
+        const cameraPresetBtns = document.querySelectorAll('.camera-preset-btn');
+        let activeCameraPreset = null;
+
+        cameraPresetBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const presetName = btn.dataset.preset;
+
+                // Обновление активной кнопки
+                if (activeCameraPreset) {
+                    activeCameraPreset.classList.remove('active');
+                }
+                btn.classList.add('active');
+                activeCameraPreset = btn;
+
+                animateCameraToPreset(presetName);
+            });
+        });
+
+        // Сброс активного пресета камеры при ручном вращении
+        controls.addEventListener('start', () => {
+            if (activeCameraPreset) {
+                activeCameraPreset.classList.remove('active');
+                activeCameraPreset = null;
+            }
+        });
+
+        // Обработчики для свойств материала
+        const roughnessSlider = document.getElementById('roughnessSlider');
+        const metalnessSlider = document.getElementById('metalnessSlider');
+        const roughnessValue = document.getElementById('roughnessValue');
+        const metalnessValue = document.getElementById('metalnessValue');
+
+        // Слайдер шероховатости
+        roughnessSlider.addEventListener('input', (e) => {
+            currentRoughness = parseFloat(e.target.value);
+            roughnessValue.textContent = currentRoughness.toFixed(2);
+            updateMaterialProperties();
+        });
+
+        // Слайдер металличности
+        metalnessSlider.addEventListener('input', (e) => {
+            currentMetalness = parseFloat(e.target.value);
+            metalnessValue.textContent = currentMetalness.toFixed(2);
+            updateMaterialProperties();
+        });
+
+        // Кнопки сброса свойств материала
+        document.getElementById('resetRoughness').addEventListener('click', () => {
+            currentRoughness = defaultMaterialProps.roughness;
+            roughnessSlider.value = currentRoughness;
+            roughnessValue.textContent = currentRoughness.toFixed(2);
+            updateMaterialProperties();
+        });
+
+        document.getElementById('resetMetalness').addEventListener('click', () => {
+            currentMetalness = defaultMaterialProps.metalness;
+            metalnessSlider.value = currentMetalness;
+            metalnessValue.textContent = currentMetalness.toFixed(2);
+            updateMaterialProperties();
+        });
+
+        // Кнопка скачивания PNG с прозрачным фоном
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            // Сохраняем текущий фон
+            const originalBackground = scene.background;
+
+            // Убираем фон для прозрачности
+            scene.background = null;
+
+            // Рендерим кадр
+            renderer.render(scene, camera);
+
+            // Получаем данные canvas как PNG
+            const dataURL = renderer.domElement.toDataURL('image/png');
+
+            // Восстанавливаем фон
+            scene.background = originalBackground;
+
+            // Создаём ссылку для скачивания
+            const link = document.createElement('a');
+            link.download = 'model-' + Date.now() + '.png';
+            link.href = dataURL;
+            link.click();
+        });
+
+        // Кнопка сброса камеры
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            // Плавная анимация возврата камеры
+            const startPosition = camera.position.clone();
+            const startTarget = controls.target.clone();
+            const duration = 1000; // 1 секунда
+            const startTime = Date.now();
+
+            function animateReset() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                // Easing function (ease-in-out)
+                const eased = progress < 0.5
+                    ? 2 * progress * progress
+                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+                camera.position.lerpVectors(startPosition, initialCameraPosition, eased);
+                controls.target.lerpVectors(startTarget, initialControlsTarget, eased);
+                controls.update();
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateReset);
+                }
+            }
+
+            animateReset();
+        });
+
+        // Обработка изменения размера окна
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Цикл анимации
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // В режиме привязки к модели обновляем позицию света каждый кадр
+            // чтобы он следовал за поворотами камеры
+            if (isLightAttachedToModel) {
+                applyLightPosition();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
