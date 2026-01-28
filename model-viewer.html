@@ -58,32 +58,6 @@
             font-size: 20px;
         }
 
-        .reset-button {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(74, 158, 255, 0.9);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .reset-button:hover {
-            background: rgba(74, 158, 255, 1);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
-        }
-
-        .reset-button:active {
-            transform: translateY(0);
-        }
-
         .download-button {
             position: absolute;
             top: 20px;
@@ -497,8 +471,6 @@
     <div id="canvas-container"></div>
 
     <button class="download-button" id="downloadBtn">Скачать PNG</button>
-    <button class="reset-button" id="resetBtn">Сбросить камеру</button>
-
     <div class="color-controls">
         <h3>Цвет модели</h3>
 
@@ -1383,35 +1355,6 @@
             link.download = 'model-' + Date.now() + '.png';
             link.href = dataURL;
             link.click();
-        });
-
-        // Кнопка сброса камеры
-        document.getElementById('resetBtn').addEventListener('click', () => {
-            // Плавная анимация возврата камеры
-            const startPosition = camera.position.clone();
-            const startTarget = controls.target.clone();
-            const duration = 1000; // 1 секунда
-            const startTime = Date.now();
-
-            function animateReset() {
-                const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-
-                // Easing function (ease-in-out)
-                const eased = progress < 0.5
-                    ? 2 * progress * progress
-                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-
-                camera.position.lerpVectors(startPosition, initialCameraPosition, eased);
-                controls.target.lerpVectors(startTarget, initialControlsTarget, eased);
-                controls.update();
-
-                if (progress < 1) {
-                    requestAnimationFrame(animateReset);
-                }
-            }
-
-            animateReset();
         });
 
         // Обработка изменения размера окна
