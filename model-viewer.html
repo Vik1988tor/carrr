@@ -196,21 +196,22 @@
 
         .camera-presets {
             display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
+            flex-wrap: nowrap;
+            gap: 4px;
             margin-top: 10px;
         }
 
         .camera-preset-btn {
-            flex: 1 1 calc(33.333% - 4px);
-            padding: 8px 4px;
+            flex: 1;
+            padding: 6px 2px;
             background: #3a3a3a;
             border: 1px solid #555;
             border-radius: 4px;
             color: #fff;
             cursor: pointer;
-            font-size: 11px;
+            font-size: 12px;
             transition: all 0.2s;
+            min-width: 0;
         }
 
         .camera-preset-btn:hover {
@@ -225,7 +226,7 @@
 
         .lighting-controls {
             position: absolute;
-            top: 96px;
+            bottom: 20px;
             right: 20px;
             background: rgba(0, 0, 0, 0.7);
             padding: 20px;
@@ -233,7 +234,7 @@
             backdrop-filter: blur(10px);
             color: white;
             min-width: 250px;
-            max-height: calc(100vh - 116px);
+            max-height: calc(100vh - 40px);
             overflow-y: auto;
             z-index: 1;
         }
@@ -573,13 +574,13 @@
         <div class="control-group">
             <label>Ракурс камеры</label>
             <div class="camera-presets">
-                <button class="camera-preset-btn" data-preset="front34" title="Передний 3/4">3/4 ↗</button>
-                <button class="camera-preset-btn" data-preset="rear34" title="Задний 3/4">3/4 ↙</button>
-                <button class="camera-preset-btn" data-preset="side" title="Профиль">Профиль</button>
-                <button class="camera-preset-btn" data-preset="front" title="Спереди">Спереди</button>
-                <button class="camera-preset-btn" data-preset="back" title="Сзади">Сзади</button>
-                <button class="camera-preset-btn" data-preset="low" title="Низкий угол">Низкий</button>
-                <button class="camera-preset-btn" data-preset="top" title="Сверху">Сверху</button>
+                <button class="camera-preset-btn" data-preset="front34" title="Передний 3/4">1</button>
+                <button class="camera-preset-btn" data-preset="rear34" title="Задний 3/4">2</button>
+                <button class="camera-preset-btn" data-preset="side" title="Профиль">3</button>
+                <button class="camera-preset-btn" data-preset="front" title="Спереди">4</button>
+                <button class="camera-preset-btn" data-preset="back" title="Сзади">5</button>
+                <button class="camera-preset-btn" data-preset="low" title="Низкий угол">6</button>
+                <button class="camera-preset-btn" data-preset="top" title="Сверху">7</button>
             </div>
         </div>
 
