@@ -60,14 +60,15 @@
 
         .download-button {
             position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(46, 204, 113, 0.9);
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0066FF;
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 14px;
+            padding: 14px 28px;
+            border-radius: 200px;
+            font-size: 16px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -76,13 +77,13 @@
         }
 
         .download-button:hover {
-            background: rgba(46, 204, 113, 1);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(46, 204, 113, 0.4);
+            background: #0052CC;
+            transform: translateX(-50%) translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 102, 255, 0.4);
         }
 
         .download-button:active {
-            transform: translateY(0);
+            transform: translateX(-50%) translateY(0);
         }
 
         .color-controls {
