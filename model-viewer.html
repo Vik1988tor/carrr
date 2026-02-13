@@ -1052,14 +1052,31 @@
                 // Обновление начальной позиции после загрузки модели
                 initialCameraPosition.copy(camera.position);
 
-                // Установка светло-серого цвета по умолчанию
-                setModelColor(defaultLightGray);
+                // Установка чёрного цвета по умолчанию (из пресетов)
+                const defaultPresetColorHex = '#141414';
+                const defaultPresetColor = new THREE.Color(defaultPresetColorHex);
+                setModelColor(defaultPresetColor);
 
                 // Инициализация свойств материала
                 updateMaterialProperties();
 
                 // Инициализируем позицию света
                 updateLightPosition();
+
+                // Обновляем UI цвета под дефолтный пресет (чёрный)
+                if (typeof colorPreview !== 'undefined' && typeof hueValue !== 'undefined') {
+                    colorPreview.style.backgroundColor = defaultPresetColorHex;
+                    hueValue.textContent = 'пресет';
+                }
+                if (typeof colorPresetBtns !== 'undefined') {
+                    colorPresetBtns.forEach(btn => {
+                        if (btn.getAttribute('data-color') === defaultPresetColorHex) {
+                            btn.classList.add('active');
+                            activePresetBtn = btn;
+                        }
+                    });
+                }
+                isGrayMode = false;
 
                 // Скрытие индикатора загрузки
                 loadingElement.style.display = 'none';
@@ -1182,7 +1199,7 @@
             });
         }
 
-        let isGrayMode = true; // Флаг режима серого цвета
+        let isGrayMode = false; // Флаг режима серого цвета
 
         // Свойства материала (значения по умолчанию)
         const defaultMaterialProps = {
@@ -1228,9 +1245,9 @@
             }
         });
 
-        // Инициализация цвета превью
-        colorPreview.style.backgroundColor = '#cccccc';
-        hueValue.textContent = 'серый';
+        // Инициализация цвета превью (по умолчанию чёрный пресет)
+        colorPreview.style.backgroundColor = '#141414';
+        hueValue.textContent = 'пресет';
 
         // Обработчик контрастности
         contrastSlider.addEventListener('input', (e) => {
