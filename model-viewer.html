@@ -225,33 +225,6 @@
             border-color: #00AADC;
         }
 
-        .model-select {
-            display: flex;
-            gap: 6px;
-            margin-top: 10px;
-        }
-
-        .model-select-btn {
-            flex: 1;
-            padding: 6px 8px;
-            background: #3a3a3a;
-            border: 1px solid #555;
-            border-radius: 4px;
-            color: #fff;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.2s;
-        }
-
-        .model-select-btn:hover {
-            background: #4a4a4a;
-            border-color: #00AADC;
-        }
-
-        .model-select-btn.active {
-            background: #00AADC;
-            border-color: #00AADC;
-        }
 
         .lighting-controls {
             position: absolute;
@@ -512,14 +485,6 @@
         <h3>Цвет модели</h3>
 
         <div class="control-group">
-            <label>Модель</label>
-            <div class="model-select">
-                <button type="button" class="model-select-btn" id="modelBtn1">1</button>
-                <button type="button" class="model-select-btn" id="modelBtn2">2</button>
-            </div>
-        </div>
-
-        <div class="control-group">
             <label>Контрастность<span class="value-display" id="contrastValue">1.0</span></label>
             <button class="reset-param-btn" id="resetContrast">Сброс</button>
             <input type="range" id="contrastSlider" min="0.5" max="2.0" value="1.0" step="0.1">
@@ -640,6 +605,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
 
@@ -1063,11 +1029,11 @@
 
         // Загрузка GLTF модели
         const loader = new GLTFLoader();
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        loader.setDRACOLoader(dracoLoader);
         const loadingElement = document.getElementById('loading');
         let loadedModel = null; // Сохраняем ссылку на модель
-
-        const DEFAULT_MODEL_PATH = './Atom_simple.glb';
-        const ALT_MODEL_PATH = './reev.glb';
 
         function loadModel(modelPath) {
             // Показываем индикатор загрузки
@@ -1152,7 +1118,7 @@
                     }
                 },
                 (error) => {
-                    console.error('Ошибка загрузки модели:', error);
+                    console.error('Ошибка загрузки модели:', modelPath, error);
                     loadingElement.textContent = 'Ошибка загрузки модели. Проверьте путь к файлу.';
                     loadingElement.style.background = 'rgba(200, 0, 0, 0.8)';
                 }
@@ -1421,34 +1387,8 @@
             updateMaterialProperties();
         });
 
-        // Переключение моделей
-        const modelBtn1 = document.getElementById('modelBtn1');
-        const modelBtn2 = document.getElementById('modelBtn2');
-        let activeModelBtn = modelBtn1;
-
-        function setActiveModelButton(btn) {
-            if (activeModelBtn) {
-                activeModelBtn.classList.remove('active');
-            }
-            activeModelBtn = btn;
-            if (activeModelBtn) {
-                activeModelBtn.classList.add('active');
-            }
-        }
-
-        modelBtn1.addEventListener('click', () => {
-            setActiveModelButton(modelBtn1);
-            loadModel(DEFAULT_MODEL_PATH);
-        });
-
-        modelBtn2.addEventListener('click', () => {
-            setActiveModelButton(modelBtn2);
-            loadModel(ALT_MODEL_PATH);
-        });
-
-        // Загружаем модель 1 по умолчанию
-        setActiveModelButton(modelBtn1);
-        loadModel(DEFAULT_MODEL_PATH);
+        // Загружаем основную модель по умолчанию
+        loadModel('./Atom_simple.glb');
 
         // Кнопка скачивания PNG с прозрачным фоном
         const downloadPngBtn = document.getElementById('downloadPngBtn');
