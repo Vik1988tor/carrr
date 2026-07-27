@@ -86,6 +86,21 @@
             transform: translateX(-50%) translateY(0);
         }
 
+        .download-button:disabled {
+            opacity: 0.6;
+            cursor: wait;
+            transform: none;
+        }
+
+        .download-button.secondary {
+            background: #5533AA;
+        }
+
+        .download-button.secondary:hover {
+            background: #4422AA;
+            box-shadow: 0 4px 12px rgba(85, 51, 170, 0.4);
+        }
+
         .color-controls {
             position: absolute;
             bottom: 20px;
@@ -477,8 +492,9 @@
 <body>
     <div id="canvas-container"></div>
 
-    <div style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; z-index: 100;">
-        <button class="download-button" id="downloadPngBtn" style="position: relative; left: auto; bottom: auto; transform: none;">Скачать PNG</button>
+    <div style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; z-index: 100; flex-wrap: wrap; justify-content: center; max-width: 90vw;">
+        <button class="download-button" id="downloadPngBtn" style="position: relative; left: auto; bottom: auto; transform: none;">Скачать PNG (2K)</button>
+        <button class="download-button secondary" id="downloadAllPngBtn" style="position: relative; left: auto; bottom: auto; transform: none;">Все ракурсы (ZIP)</button>
         <button class="download-button" id="downloadSvgBtn" style="position: relative; left: auto; bottom: auto; transform: none; background: #00AA55;">Скачать SVG</button>
     </div>
     <div class="color-controls">
@@ -606,8 +622,10 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
+        import JSZip from 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm';
 
         // Инициализация сцены
         const scene = new THREE.Scene();
@@ -625,15 +643,43 @@
         // Настройка рендерера (WebGL - основной)
         const renderer = new THREE.WebGLRenderer({
             antialias: true,
-            alpha: true,
-            preserveDrawingBuffer: true
+            alpha: true
         });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.outputColorSpace = THREE.SRGBColorSpace; // Правильное цветовое пространство
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.0;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        pmremGenerator.compileEquirectangularShader();
+
+        const HDR_URL = 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr';
+        new RGBELoader().load(
+            HDR_URL,
+            (texture) => {
+                const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+                scene.environment = envMap;
+                texture.dispose();
+                pmremGenerator.dispose();
+            },
+            undefined,
+            (error) => {
+                console.warn('Не удалось загрузить HDRI, отражения будут упрощены:', error);
+            }
+        );
+
+        const shadowGround = new THREE.Mesh(
+            new THREE.PlaneGeometry(40, 40),
+            new THREE.ShadowMaterial({ opacity: 0.35 })
+        );
+        shadowGround.rotation.x = -Math.PI / 2;
+        shadowGround.position.y = -0.01;
+        shadowGround.receiveShadow = true;
+        scene.add(shadowGround);
 
         // Дополнительный рендерер для экспорта SVG (не добавляем в DOM)
         const svgRenderer = new SVGRenderer();
@@ -657,34 +703,204 @@
         // Пресеты камеры для эффектных фото
         const cameraPresets = {
             front34: {
+                label: 'front34',
                 position: { x: 6, y: 3, z: 6 },
                 target: { x: 0, y: 0, z: 0 }
             },
             rear34: {
+                label: 'rear34',
                 position: { x: -6, y: 3, z: -6 },
                 target: { x: 0, y: 0, z: 0 }
             },
             side: {
+                label: 'side',
                 position: { x: 0, y: 2, z: 8 },
                 target: { x: 0, y: 0, z: 0 }
             },
             front: {
+                label: 'front',
                 position: { x: -8, y: 2, z: 0 },
                 target: { x: 0, y: 0, z: 0 }
             },
             back: {
+                label: 'back',
                 position: { x: 8, y: 2, z: 0 },
                 target: { x: 0, y: 0, z: 0 }
             },
             low: {
+                label: 'low',
                 position: { x: 5, y: 0.5, z: 5 },
                 target: { x: 0, y: 1, z: 0 }
             },
             top: {
+                label: 'top',
                 position: { x: 0, y: 10, z: 0.1 },
                 target: { x: 0, y: 0, z: 0 }
             }
         };
+
+        const EXPORT_WIDTH = 2560;
+
+        function upgradeMaterialToPhysical(material) {
+            if (!material || !material.isMaterial) return material;
+
+            if (material.isMeshPhysicalMaterial) {
+                material.clearcoat = 1.0;
+                material.clearcoatRoughness = 0.08;
+                material.envMapIntensity = 1.0;
+                return material;
+            }
+
+            if (material.isMeshStandardMaterial) {
+                const physical = new THREE.MeshPhysicalMaterial();
+                physical.copy(material);
+                physical.clearcoat = 1.0;
+                physical.clearcoatRoughness = 0.08;
+                physical.envMapIntensity = 1.0;
+                return physical;
+            }
+
+            return material;
+        }
+
+        function setupModelForExportQuality(model) {
+            model.traverse((child) => {
+                if (!child.isMesh) return;
+
+                child.castShadow = true;
+                child.receiveShadow = true;
+
+                if (Array.isArray(child.material)) {
+                    child.material = child.material.map(upgradeMaterialToPhysical);
+                } else {
+                    child.material = upgradeMaterialToPhysical(child.material);
+                }
+            });
+        }
+
+        function setCameraToPreset(presetName) {
+            const preset = cameraPresets[presetName];
+            if (!preset) return;
+
+            camera.position.set(preset.position.x, preset.position.y, preset.position.z);
+            controls.target.set(preset.target.x, preset.target.y, preset.target.z);
+            camera.lookAt(controls.target);
+            controls.update();
+        }
+
+        function renderToPngBlob(width, height, { transparent = true } = {}) {
+            const renderTarget = new THREE.WebGLRenderTarget(width, height, {
+                format: THREE.RGBAFormat,
+                type: THREE.UnsignedByteType,
+                colorSpace: THREE.SRGBColorSpace
+            });
+
+            const prevRenderTarget = renderer.getRenderTarget();
+            const prevBackground = scene.background;
+            const prevHelperVisible = lightHelper.visible;
+            const prevAspect = camera.aspect;
+
+            scene.background = transparent ? null : prevBackground;
+            lightHelper.visible = false;
+
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+
+            renderer.setRenderTarget(renderTarget);
+            renderer.render(scene, camera);
+
+            const pixels = new Uint8Array(width * height * 4);
+            renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, pixels);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.createImageData(width, height);
+
+            for (let y = 0; y < height; y++) {
+                const srcRow = (height - 1 - y) * width * 4;
+                const dstRow = y * width * 4;
+                imageData.data.set(pixels.subarray(srcRow, srcRow + width * 4), dstRow);
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+
+            renderer.setRenderTarget(prevRenderTarget);
+            scene.background = prevBackground;
+            lightHelper.visible = prevHelperVisible;
+            camera.aspect = prevAspect;
+            camera.updateProjectionMatrix();
+            renderTarget.dispose();
+
+            return new Promise((resolve) => {
+                canvas.toBlob((blob) => resolve(blob), 'image/png');
+            });
+        }
+
+        function getExportDimensions() {
+            const width = EXPORT_WIDTH;
+            const height = Math.max(1, Math.round(width / camera.aspect));
+            return { width, height };
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        async function exportCurrentViewPng() {
+            const { width, height } = getExportDimensions();
+            const blob = await renderToPngBlob(width, height, { transparent: true });
+            downloadBlob(blob, `model-${Date.now()}.png`);
+        }
+
+        async function exportAllPresetsPngZip() {
+            const presetNames = Object.keys(cameraPresets);
+            const { width, height } = getExportDimensions();
+            const zip = new JSZip();
+            const savedPosition = camera.position.clone();
+            const savedTarget = controls.target.clone();
+
+            for (let i = 0; i < presetNames.length; i++) {
+                const presetName = presetNames[i];
+                const preset = cameraPresets[presetName];
+                loadingElement.style.display = 'block';
+                loadingElement.textContent = `Экспорт ${i + 1}/${presetNames.length}: ${preset.label}`;
+                loadingElement.style.background = 'rgba(0, 0, 0, 0.8)';
+
+                setCameraToPreset(presetName);
+                if (isLightAttachedToModel) {
+                    applyLightPosition();
+                }
+                updateShadowLight();
+
+                const blob = await renderToPngBlob(width, height, { transparent: true });
+                zip.file(`model-${preset.label}.png`, blob);
+
+                await new Promise((resolve) => setTimeout(resolve, 0));
+            }
+
+            camera.position.copy(savedPosition);
+            controls.target.copy(savedTarget);
+            controls.update();
+
+            loadingElement.textContent = 'Создание ZIP...';
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            downloadBlob(zipBlob, `model-all-views-${Date.now()}.zip`);
+            loadingElement.style.display = 'none';
+        }
+
+        function setExportButtonsDisabled(disabled) {
+            downloadPngBtn.disabled = disabled;
+            downloadAllPngBtn.disabled = disabled;
+        }
 
         // Освещение
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -692,11 +908,25 @@
 
         // Основной управляемый свет - используем PointLight для затухания
         const pointLight = new THREE.PointLight(0xffffff, 200, 0, 1);
-        // intensity: базовая яркость
-        // distance: 0 = бесконечность
-        // decay: 1 = линейное затухание (меньше физически правильного, но больше света на расстоянии)
         pointLight.position.set(5, 10, 7.5);
+        pointLight.castShadow = true;
+        pointLight.shadow.mapSize.set(2048, 2048);
+        pointLight.shadow.bias = -0.0005;
+        pointLight.shadow.normalBias = 0.02;
         scene.add(pointLight);
+
+        const shadowLight = new THREE.DirectionalLight(0xffffff, 0);
+        shadowLight.castShadow = true;
+        shadowLight.shadow.mapSize.set(2048, 2048);
+        shadowLight.shadow.camera.near = 0.5;
+        shadowLight.shadow.camera.far = 60;
+        shadowLight.shadow.camera.left = -15;
+        shadowLight.shadow.camera.right = 15;
+        shadowLight.shadow.camera.top = 15;
+        shadowLight.shadow.camera.bottom = -15;
+        shadowLight.shadow.bias = -0.001;
+        scene.add(shadowLight);
+        scene.add(shadowLight.target);
 
         // Визуальный помощник для отображения позиции света
         const lightHelper = new THREE.Mesh(
@@ -745,6 +975,12 @@
             return new THREE.Vector3(x, y, z);
         }
 
+        function updateShadowLight() {
+            shadowLight.position.copy(pointLight.position);
+            shadowLight.target.position.set(0, 0, 0);
+            shadowLight.target.updateMatrixWorld();
+        }
+
         // Функция обновления позиции света
         function updateLightPosition() {
             // Вычисляем новую базовую позицию
@@ -774,6 +1010,7 @@
                 pointLight.position.copy(baseLightPosition);
                 lightHelper.position.copy(baseLightPosition);
             }
+            updateShadowLight();
         }
 
         // Функция преобразования температуры в цвет
@@ -1067,6 +1304,10 @@
                     model.scale.setScalar(scale);
 
                     scene.add(model);
+                    setupModelForExportQuality(model);
+
+                    const finalBox = new THREE.Box3().setFromObject(model);
+                    shadowGround.position.y = finalBox.min.y - 0.01;
 
                     // Настройка камеры на основе размера модели (крупный план)
                     const distance = maxDim * 0.9;
@@ -1222,6 +1463,12 @@
                         if (supportsPBRProperties(mat)) {
                             mat.roughness = currentRoughness;
                             mat.metalness = currentMetalness;
+                        }
+
+                        if (mat.isMeshPhysicalMaterial) {
+                            mat.clearcoat = 1.0;
+                            mat.clearcoatRoughness = Math.min(currentRoughness * 0.15, 0.12);
+                            mat.envMapIntensity = 1.0;
                         }
 
                         mat.needsUpdate = true;
@@ -1390,31 +1637,41 @@
         // Загружаем основную модель по умолчанию
         loadModel('./Atom_simple.glb');
 
-        // Кнопка скачивания PNG с прозрачным фоном
+        // Кнопки экспорта PNG
         const downloadPngBtn = document.getElementById('downloadPngBtn');
+        const downloadAllPngBtn = document.getElementById('downloadAllPngBtn');
         const downloadSvgBtn = document.getElementById('downloadSvgBtn');
 
-        downloadPngBtn.addEventListener('click', () => {
-            // Сохраняем текущий фон
-            const originalBackground = scene.background;
+        downloadPngBtn.addEventListener('click', async () => {
+            setExportButtonsDisabled(true);
+            loadingElement.style.display = 'block';
+            loadingElement.textContent = 'Экспорт PNG 2K...';
+            loadingElement.style.background = 'rgba(0, 0, 0, 0.8)';
 
-            // Убираем фон для прозрачности
-            scene.background = null;
+            try {
+                await exportCurrentViewPng();
+                loadingElement.style.display = 'none';
+            } catch (error) {
+                console.error('Ошибка экспорта PNG:', error);
+                loadingElement.textContent = 'Ошибка экспорта PNG';
+                loadingElement.style.background = 'rgba(200, 0, 0, 0.8)';
+            } finally {
+                setExportButtonsDisabled(false);
+            }
+        });
 
-            // Рендерим кадр
-            renderer.render(scene, camera);
+        downloadAllPngBtn.addEventListener('click', async () => {
+            setExportButtonsDisabled(true);
 
-            // Получаем данные canvas как PNG
-            const dataURL = renderer.domElement.toDataURL('image/png');
-
-            // Восстанавливаем фон
-            scene.background = originalBackground;
-
-            // Создаём ссылку для скачивания PNG
-            const link = document.createElement('a');
-            link.download = 'model-' + Date.now() + '.png';
-            link.href = dataURL;
-            link.click();
+            try {
+                await exportAllPresetsPngZip();
+            } catch (error) {
+                console.error('Ошибка пакетного экспорта:', error);
+                loadingElement.textContent = 'Ошибка пакетного экспорта';
+                loadingElement.style.background = 'rgba(200, 0, 0, 0.8)';
+            } finally {
+                setExportButtonsDisabled(false);
+            }
         });
 
         // Кнопка скачивания SVG (векторный SVG через SVGRenderer)
