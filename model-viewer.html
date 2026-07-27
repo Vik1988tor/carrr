@@ -814,6 +814,7 @@
         const EXPORT_MSAA_SAMPLES = 4;
         let exportSupersample = 2;
         let shadowsEnabled = false;
+        let loadedModel = null;
         const MODEL_CANDIDATES = [
             new URL('Atom_simple.glb', import.meta.url).href,
             new URL('modelCinema.gltf', import.meta.url).href
@@ -976,7 +977,8 @@
         }
 
         function setExportButtonsDisabled(disabled) {
-            downloadPngBtn.disabled = disabled;
+            const btn = document.getElementById('downloadPngBtn');
+            if (btn) btn.disabled = disabled;
         }
 
         // Освещение
@@ -1374,7 +1376,6 @@
         // Загрузка GLTF модели
         const loader = new GLTFLoader();
         const loadingElement = document.getElementById('loading');
-        let loadedModel = null; // Сохраняем ссылку на модель
 
         function showLoadingError(message) {
             loadingElement.style.display = 'block';
