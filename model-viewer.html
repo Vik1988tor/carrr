@@ -247,6 +247,8 @@
             transform: translateX(-50%);
             display: flex;
             align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
             gap: 10px;
             background: rgba(0, 0, 0, 0.7);
             padding: 10px 16px;
@@ -255,6 +257,7 @@
             color: white;
             font-size: 13px;
             z-index: 100;
+            max-width: 95vw;
         }
 
         .export-quality-presets {
@@ -283,8 +286,20 @@
             border-color: #0066FF;
         }
 
+        .export-shadow-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: 4px;
+            padding-left: 14px;
+            border-left: 1px solid rgba(255, 255, 255, 0.25);
+        }
 
-        .lighting-controls {
+        .export-shadow-toggle > label:first-of-type {
+            color: #fff;
+            font-size: 13px;
+            white-space: nowrap;
+        }
             position: absolute;
             bottom: 20px;
             right: 20px;
@@ -542,11 +557,17 @@
             <button type="button" class="export-quality-btn" data-supersample="3" title="Больше сглаживания">Высокое ×3</button>
             <button type="button" class="export-quality-btn" data-supersample="4" title="Максимальное качество, дольше">Макс. ×4</button>
         </div>
+        <div class="export-shadow-toggle">
+            <label for="shadowSwitch">Тень под авто</label>
+            <label class="switch">
+                <input type="checkbox" id="shadowSwitch">
+                <span class="slider-switch"></span>
+            </label>
+        </div>
     </div>
 
     <div style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; z-index: 100; flex-wrap: wrap; justify-content: center; max-width: 90vw;">
         <button class="download-button" id="downloadPngBtn" style="position: relative; left: auto; bottom: auto; transform: none;">Скачать PNG (2K)</button>
-        <button class="download-button secondary" id="downloadAllPngBtn" style="position: relative; left: auto; bottom: auto; transform: none;">Все ракурсы (ZIP)</button>
     </div>
     <div class="color-controls">
         <h3>Цвет модели</h3>
@@ -596,14 +617,6 @@
             <label for="lightModeSwitch">Свет привязан к модели</label>
             <label class="switch">
                 <input type="checkbox" id="lightModeSwitch">
-                <span class="slider-switch"></span>
-            </label>
-        </div>
-
-        <div class="switch-container">
-            <label for="shadowSwitch">Тень под авто</label>
-            <label class="switch">
-                <input type="checkbox" id="shadowSwitch">
                 <span class="slider-switch"></span>
             </label>
         </div>
@@ -845,21 +858,6 @@
             applyShadowSettings();
         }
 
-        function applyShadowSettings() {
-            renderer.shadowMap.enabled = shadowsEnabled;
-            shadowGround.visible = shadowsEnabled;
-            pointLight.castShadow = shadowsEnabled;
-            shadowLight.castShadow = shadowsEnabled;
-
-            if (!loadedModel) return;
-
-            loadedModel.traverse((child) => {
-                if (!child.isMesh) return;
-                child.castShadow = shadowsEnabled;
-                child.receiveShadow = shadowsEnabled;
-            });
-        }
-
         function setCameraToPreset(presetName) {
             const preset = cameraPresets[presetName];
             if (!preset) return;
@@ -977,46 +975,8 @@
             downloadBlob(blob, `model-${Date.now()}.png`);
         }
 
-        async function exportAllPresetsPngZip() {
-            const { default: JSZip } = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
-            const presetNames = Object.keys(cameraPresets);
-            const { width, height } = getExportDimensions();
-            const zip = new JSZip();
-            const savedPosition = camera.position.clone();
-            const savedTarget = controls.target.clone();
-
-            for (let i = 0; i < presetNames.length; i++) {
-                const presetName = presetNames[i];
-                const preset = cameraPresets[presetName];
-                loadingElement.style.display = 'block';
-                loadingElement.textContent = `Экспорт ${i + 1}/${presetNames.length}: ${preset.label}`;
-                loadingElement.style.background = 'rgba(0, 0, 0, 0.8)';
-
-                setCameraToPreset(presetName);
-                if (isLightAttachedToModel) {
-                    applyLightPosition();
-                }
-                updateShadowLight();
-
-                const blob = await renderToPngBlob(width, height, { transparent: true });
-                zip.file(`model-${preset.label}.png`, blob);
-
-                await new Promise((resolve) => setTimeout(resolve, 0));
-            }
-
-            camera.position.copy(savedPosition);
-            controls.target.copy(savedTarget);
-            controls.update();
-
-            loadingElement.textContent = 'Создание ZIP...';
-            const zipBlob = await zip.generateAsync({ type: 'blob' });
-            downloadBlob(zipBlob, `model-all-views-${Date.now()}.zip`);
-            loadingElement.style.display = 'none';
-        }
-
         function setExportButtonsDisabled(disabled) {
             downloadPngBtn.disabled = disabled;
-            downloadAllPngBtn.disabled = disabled;
         }
 
         // Освещение
@@ -1044,6 +1004,21 @@
         shadowLight.shadow.bias = -0.001;
         scene.add(shadowLight);
         scene.add(shadowLight.target);
+
+        function applyShadowSettings() {
+            renderer.shadowMap.enabled = shadowsEnabled;
+            shadowGround.visible = shadowsEnabled;
+            pointLight.castShadow = shadowsEnabled;
+            shadowLight.castShadow = shadowsEnabled;
+
+            if (!loadedModel) return;
+
+            loadedModel.traverse((child) => {
+                if (!child.isMesh) return;
+                child.castShadow = shadowsEnabled;
+                child.receiveShadow = shadowsEnabled;
+            });
+        }
 
         applyShadowSettings();
 
@@ -1779,7 +1754,6 @@
 
         // Кнопки экспорта PNG
         const downloadPngBtn = document.getElementById('downloadPngBtn');
-        const downloadAllPngBtn = document.getElementById('downloadAllPngBtn');
 
         downloadPngBtn.addEventListener('click', async () => {
             setExportButtonsDisabled(true);
@@ -1793,20 +1767,6 @@
             } catch (error) {
                 console.error('Ошибка экспорта PNG:', error);
                 loadingElement.textContent = 'Ошибка экспорта PNG';
-                loadingElement.style.background = 'rgba(200, 0, 0, 0.8)';
-            } finally {
-                setExportButtonsDisabled(false);
-            }
-        });
-
-        downloadAllPngBtn.addEventListener('click', async () => {
-            setExportButtonsDisabled(true);
-
-            try {
-                await exportAllPresetsPngZip();
-            } catch (error) {
-                console.error('Ошибка пакетного экспорта:', error);
-                loadingElement.textContent = 'Ошибка пакетного экспорта';
                 loadingElement.style.background = 'rgba(200, 0, 0, 0.8)';
             } finally {
                 setExportButtonsDisabled(false);
