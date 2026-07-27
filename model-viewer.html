@@ -240,6 +240,49 @@
             border-color: #00AADC;
         }
 
+        .export-settings {
+            position: absolute;
+            bottom: 78px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 16px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            color: white;
+            font-size: 13px;
+            z-index: 100;
+        }
+
+        .export-quality-presets {
+            display: flex;
+            gap: 6px;
+        }
+
+        .export-quality-btn {
+            padding: 6px 10px;
+            background: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .export-quality-btn:hover {
+            background: #4a4a4a;
+            border-color: #0066FF;
+        }
+
+        .export-quality-btn.active {
+            background: #0066FF;
+            border-color: #0066FF;
+        }
+
 
         .lighting-controls {
             position: absolute;
@@ -492,10 +535,18 @@
 <body>
     <div id="canvas-container"></div>
 
+    <div class="export-settings">
+        <span>Качество PNG:</span>
+        <div class="export-quality-presets">
+            <button type="button" class="export-quality-btn active" data-supersample="2" title="Быстрый экспорт">Стандарт ×2</button>
+            <button type="button" class="export-quality-btn" data-supersample="3" title="Больше сглаживания">Высокое ×3</button>
+            <button type="button" class="export-quality-btn" data-supersample="4" title="Максимальное качество, дольше">Макс. ×4</button>
+        </div>
+    </div>
+
     <div style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; z-index: 100; flex-wrap: wrap; justify-content: center; max-width: 90vw;">
         <button class="download-button" id="downloadPngBtn" style="position: relative; left: auto; bottom: auto; transform: none;">Скачать PNG (2K)</button>
         <button class="download-button secondary" id="downloadAllPngBtn" style="position: relative; left: auto; bottom: auto; transform: none;">Все ракурсы (ZIP)</button>
-        <button class="download-button" id="downloadSvgBtn" style="position: relative; left: auto; bottom: auto; transform: none; background: #00AA55;">Скачать SVG</button>
     </div>
     <div class="color-controls">
         <h3>Цвет модели</h3>
@@ -545,6 +596,14 @@
             <label for="lightModeSwitch">Свет привязан к модели</label>
             <label class="switch">
                 <input type="checkbox" id="lightModeSwitch">
+                <span class="slider-switch"></span>
+            </label>
+        </div>
+
+        <div class="switch-container">
+            <label for="shadowSwitch">Тень под авто</label>
+            <label class="switch">
+                <input type="checkbox" id="shadowSwitch">
                 <span class="slider-switch"></span>
             </label>
         </div>
@@ -623,7 +682,6 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
 
         // Инициализация сцены
         const scene = new THREE.Scene();
@@ -682,11 +740,8 @@
         shadowGround.rotation.x = -Math.PI / 2;
         shadowGround.position.y = -0.01;
         shadowGround.receiveShadow = true;
+        shadowGround.visible = false;
         scene.add(shadowGround);
-
-        // Дополнительный рендерер для экспорта SVG (не добавляем в DOM)
-        const svgRenderer = new SVGRenderer();
-        svgRenderer.setSize(window.innerWidth, window.innerHeight);
 
         // Настройка OrbitControls
         const controls = new OrbitControls(camera, renderer.domElement);
@@ -743,8 +798,9 @@
         };
 
         const EXPORT_WIDTH = 2560;
-        const EXPORT_SUPERSAMPLE = 2;
         const EXPORT_MSAA_SAMPLES = 4;
+        let exportSupersample = 2;
+        let shadowsEnabled = false;
         const MODEL_CANDIDATES = [
             new URL('Atom_simple.glb', import.meta.url).href,
             new URL('modelCinema.gltf', import.meta.url).href
@@ -780,14 +836,27 @@
             model.traverse((child) => {
                 if (!child.isMesh) return;
 
-                child.castShadow = true;
-                child.receiveShadow = true;
-
                 if (Array.isArray(child.material)) {
                     child.material = child.material.map(upgradeMaterialToPhysical);
                 } else {
                     child.material = upgradeMaterialToPhysical(child.material);
                 }
+            });
+            applyShadowSettings();
+        }
+
+        function applyShadowSettings() {
+            renderer.shadowMap.enabled = shadowsEnabled;
+            shadowGround.visible = shadowsEnabled;
+            pointLight.castShadow = shadowsEnabled;
+            shadowLight.castShadow = shadowsEnabled;
+
+            if (!loadedModel) return;
+
+            loadedModel.traverse((child) => {
+                if (!child.isMesh) return;
+                child.castShadow = shadowsEnabled;
+                child.receiveShadow = shadowsEnabled;
             });
         }
 
@@ -829,7 +898,7 @@
         }
 
         function renderToPngBlob(width, height, { transparent = true } = {}) {
-            const supersample = EXPORT_SUPERSAMPLE;
+            const supersample = exportSupersample;
             const renderWidth = width * supersample;
             const renderHeight = height * supersample;
             const renderTarget = createExportRenderTarget(renderWidth, renderHeight);
@@ -842,7 +911,7 @@
 
             scene.background = transparent ? null : prevBackground;
             lightHelper.visible = false;
-            shadowGround.visible = transparent ? false : prevGroundVisible;
+            shadowGround.visible = shadowsEnabled;
 
             camera.aspect = width / height;
             camera.updateProjectionMatrix();
@@ -957,14 +1026,14 @@
         // Основной управляемый свет - используем PointLight для затухания
         const pointLight = new THREE.PointLight(0xffffff, 200, 0, 1);
         pointLight.position.set(5, 10, 7.5);
-        pointLight.castShadow = true;
+        pointLight.castShadow = false;
         pointLight.shadow.mapSize.set(2048, 2048);
         pointLight.shadow.bias = -0.0005;
         pointLight.shadow.normalBias = 0.02;
         scene.add(pointLight);
 
         const shadowLight = new THREE.DirectionalLight(0xffffff, 0);
-        shadowLight.castShadow = true;
+        shadowLight.castShadow = false;
         shadowLight.shadow.mapSize.set(2048, 2048);
         shadowLight.shadow.camera.near = 0.5;
         shadowLight.shadow.camera.far = 60;
@@ -975,6 +1044,8 @@
         shadowLight.shadow.bias = -0.001;
         scene.add(shadowLight);
         scene.add(shadowLight.target);
+
+        applyShadowSettings();
 
         // Визуальный помощник для отображения позиции света
         const lightHelper = new THREE.Mesh(
@@ -1308,6 +1379,21 @@
             }
 
             applyLightPosition();
+        });
+
+        const shadowSwitch = document.getElementById('shadowSwitch');
+        shadowSwitch.addEventListener('change', (e) => {
+            shadowsEnabled = e.target.checked;
+            applyShadowSettings();
+        });
+
+        const exportQualityBtns = document.querySelectorAll('.export-quality-btn');
+        exportQualityBtns.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                exportSupersample = parseInt(btn.dataset.supersample, 10);
+                exportQualityBtns.forEach((b) => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
         });
 
         // Загрузка GLTF модели
@@ -1694,12 +1780,11 @@
         // Кнопки экспорта PNG
         const downloadPngBtn = document.getElementById('downloadPngBtn');
         const downloadAllPngBtn = document.getElementById('downloadAllPngBtn');
-        const downloadSvgBtn = document.getElementById('downloadSvgBtn');
 
         downloadPngBtn.addEventListener('click', async () => {
             setExportButtonsDisabled(true);
             loadingElement.style.display = 'block';
-            loadingElement.textContent = 'Экспорт PNG 2K...';
+            loadingElement.textContent = `Экспорт PNG 2K (×${exportSupersample})...`;
             loadingElement.style.background = 'rgba(0, 0, 0, 0.8)';
 
             try {
@@ -1728,40 +1813,11 @@
             }
         });
 
-        // Кнопка скачивания SVG (векторный SVG через SVGRenderer)
-        downloadSvgBtn.addEventListener('click', () => {
-            // Рендерим текущую сцену в SVG
-            svgRenderer.setSize(window.innerWidth, window.innerHeight);
-            svgRenderer.render(scene, camera);
-
-            const svgElement = svgRenderer.domElement;
-
-            // Убеждаемся, что есть нужные атрибуты
-            svgElement.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-            svgElement.setAttribute('width', String(window.innerWidth));
-            svgElement.setAttribute('height', String(window.innerHeight));
-
-            const serializer = new XMLSerializer();
-            const svgString = serializer.serializeToString(svgElement);
-
-            const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'model-' + Date.now() + '.svg';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        });
-
         // Обработка изменения размера окна
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            svgRenderer.setSize(window.innerWidth, window.innerHeight);
         });
 
         // Цикл анимации
