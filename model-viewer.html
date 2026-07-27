@@ -743,6 +743,8 @@
         };
 
         const EXPORT_WIDTH = 2560;
+        const EXPORT_SUPERSAMPLE = 2;
+        const EXPORT_MSAA_SAMPLES = 4;
         const MODEL_CANDIDATES = [
             new URL('Atom_simple.glb', import.meta.url).href,
             new URL('modelCinema.gltf', import.meta.url).href
@@ -799,53 +801,87 @@
             controls.update();
         }
 
-        function renderToPngBlob(width, height, { transparent = true } = {}) {
-            const renderTarget = new THREE.WebGLRenderTarget(width, height, {
+        function createExportRenderTarget(width, height) {
+            const options = {
                 format: THREE.RGBAFormat,
                 type: THREE.UnsignedByteType,
-                colorSpace: THREE.SRGBColorSpace
-            });
+                colorSpace: THREE.SRGBColorSpace,
+                depthBuffer: true
+            };
+
+            if (renderer.capabilities.isWebGL2) {
+                options.samples = EXPORT_MSAA_SAMPLES;
+            }
+
+            return new THREE.WebGLRenderTarget(width, height, options);
+        }
+
+        function flipPixelsToImageData(pixels, width, height) {
+            const imageData = new ImageData(width, height);
+            const rowBytes = width * 4;
+
+            for (let y = 0; y < height; y++) {
+                const srcRow = (height - 1 - y) * rowBytes;
+                imageData.data.set(pixels.subarray(srcRow, srcRow + rowBytes), y * rowBytes);
+            }
+
+            return imageData;
+        }
+
+        function renderToPngBlob(width, height, { transparent = true } = {}) {
+            const supersample = EXPORT_SUPERSAMPLE;
+            const renderWidth = width * supersample;
+            const renderHeight = height * supersample;
+            const renderTarget = createExportRenderTarget(renderWidth, renderHeight);
 
             const prevRenderTarget = renderer.getRenderTarget();
             const prevBackground = scene.background;
             const prevHelperVisible = lightHelper.visible;
+            const prevGroundVisible = shadowGround.visible;
             const prevAspect = camera.aspect;
 
             scene.background = transparent ? null : prevBackground;
             lightHelper.visible = false;
+            shadowGround.visible = transparent ? false : prevGroundVisible;
 
             camera.aspect = width / height;
             camera.updateProjectionMatrix();
 
             renderer.setRenderTarget(renderTarget);
+            renderer.setClearColor(0x000000, 0);
+            renderer.clear();
             renderer.render(scene, camera);
 
-            const pixels = new Uint8Array(width * height * 4);
-            renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, pixels);
+            const pixels = new Uint8Array(renderWidth * renderHeight * 4);
+            renderer.readRenderTargetPixels(renderTarget, 0, 0, renderWidth, renderHeight, pixels);
 
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            const imageData = ctx.createImageData(width, height);
+            const sourceCanvas = document.createElement('canvas');
+            sourceCanvas.width = renderWidth;
+            sourceCanvas.height = renderHeight;
+            sourceCanvas.getContext('2d').putImageData(
+                flipPixelsToImageData(pixels, renderWidth, renderHeight),
+                0,
+                0
+            );
 
-            for (let y = 0; y < height; y++) {
-                const srcRow = (height - 1 - y) * width * 4;
-                const dstRow = y * width * 4;
-                imageData.data.set(pixels.subarray(srcRow, srcRow + width * 4), dstRow);
-            }
-
-            ctx.putImageData(imageData, 0, 0);
+            const outputCanvas = document.createElement('canvas');
+            outputCanvas.width = width;
+            outputCanvas.height = height;
+            const outputCtx = outputCanvas.getContext('2d');
+            outputCtx.imageSmoothingEnabled = true;
+            outputCtx.imageSmoothingQuality = 'high';
+            outputCtx.drawImage(sourceCanvas, 0, 0, width, height);
 
             renderer.setRenderTarget(prevRenderTarget);
             scene.background = prevBackground;
             lightHelper.visible = prevHelperVisible;
+            shadowGround.visible = prevGroundVisible;
             camera.aspect = prevAspect;
             camera.updateProjectionMatrix();
             renderTarget.dispose();
 
             return new Promise((resolve) => {
-                canvas.toBlob((blob) => resolve(blob), 'image/png');
+                outputCanvas.toBlob((blob) => resolve(blob), 'image/png');
             });
         }
 
