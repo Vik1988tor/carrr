@@ -513,9 +513,9 @@
     <div class="export-settings">
         <span>Качество PNG:</span>
         <div class="export-quality-presets">
-            <button type="button" class="export-quality-btn active" data-supersample="2" title="Быстрый экспорт">Стандарт ×2</button>
-            <button type="button" class="export-quality-btn" data-supersample="3" title="Больше сглаживания">Высокое ×3</button>
-            <button type="button" class="export-quality-btn" data-supersample="4" title="Максимальное качество, дольше">Макс. ×4</button>
+            <button type="button" class="export-quality-btn active" data-supersample="2" title="Длинная сторона 2560 px">Стандарт ×2</button>
+            <button type="button" class="export-quality-btn" data-supersample="3" title="Длинная сторона 3840 px">Высокое ×3</button>
+            <button type="button" class="export-quality-btn" data-supersample="4" title="Длинная сторона 5120 px">Макс. ×4</button>
         </div>
         <div class="export-shadow-toggle">
             <label for="shadowSwitch">Тень под авто</label>
@@ -795,7 +795,8 @@
             }
         };
 
-        const EXPORT_WIDTH = 2560;
+        const EXPORT_BASE_LONG_EDGE = 1280;
+        const EXPORT_AA_SCALE = 2;
         const EXPORT_MSAA_SAMPLES = 4;
         let exportSupersample = 2;
         let shadowsEnabled = false;
@@ -1023,10 +1024,22 @@
             return cropped;
         }
 
-        async function renderToPngBlob(width, height, { transparent = true } = {}) {
-            const supersample = exportSupersample;
-            const renderWidth = width * supersample;
-            const renderHeight = height * supersample;
+        function getExportOutputLongEdge() {
+            return EXPORT_BASE_LONG_EDGE * exportSupersample;
+        }
+
+        function getExportFrameSize() {
+            const longEdge = getExportOutputLongEdge();
+
+            return {
+                width: longEdge,
+                height: Math.max(1, Math.round(longEdge / camera.aspect))
+            };
+        }
+
+        async function renderToPngBlob(frameWidth, frameHeight, outputLongEdge, { transparent = true } = {}) {
+            const renderWidth = frameWidth * EXPORT_AA_SCALE;
+            const renderHeight = frameHeight * EXPORT_AA_SCALE;
             const renderTarget = createExportRenderTarget(renderWidth, renderHeight);
 
             const prevRenderTarget = renderer.getRenderTarget();
@@ -1040,7 +1053,7 @@
                 lightHelper.visible = false;
                 shadowGround.visible = shadowsEnabled;
 
-                camera.aspect = width / height;
+                camera.aspect = frameWidth / frameHeight;
                 camera.updateProjectionMatrix();
 
                 renderer.setRenderTarget(renderTarget);
@@ -1059,7 +1072,7 @@
 
                 cropBounds = expandPixelBounds(
                     cropBounds,
-                    2 * supersample,
+                    2 * EXPORT_AA_SCALE,
                     renderWidth,
                     renderHeight
                 );
@@ -1071,8 +1084,8 @@
                 croppedCanvas.getContext('2d').putImageData(croppedImageData, 0, 0);
 
                 const longestSide = Math.max(cropBounds.width, cropBounds.height);
-                const outputWidth = Math.max(1, Math.round((cropBounds.width / longestSide) * width));
-                const outputHeight = Math.max(1, Math.round((cropBounds.height / longestSide) * width));
+                const outputWidth = Math.max(1, Math.round((cropBounds.width / longestSide) * outputLongEdge));
+                const outputHeight = Math.max(1, Math.round((cropBounds.height / longestSide) * outputLongEdge));
 
                 const outputCanvas = document.createElement('canvas');
                 outputCanvas.width = outputWidth;
@@ -1104,12 +1117,6 @@
             }
         }
 
-        function getExportDimensions() {
-            const width = EXPORT_WIDTH;
-            const height = Math.max(1, Math.round(width / camera.aspect));
-            return { width, height };
-        }
-
         function downloadBlob(blob, filename) {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -1126,9 +1133,10 @@
                 throw new Error('Модель ещё не загружена');
             }
 
-            const { width, height } = getExportDimensions();
-            const blob = await renderToPngBlob(width, height, { transparent: true });
-            downloadBlob(blob, `model-${Date.now()}.png`);
+            const outputLongEdge = getExportOutputLongEdge();
+            const { width, height } = getExportFrameSize();
+            const blob = await renderToPngBlob(width, height, outputLongEdge, { transparent: true });
+            downloadBlob(blob, `model-${outputLongEdge}px-${Date.now()}.png`);
         }
 
         function setExportButtonsDisabled(disabled) {
@@ -1915,7 +1923,7 @@
         downloadPngBtn.addEventListener('click', async () => {
             setExportButtonsDisabled(true);
             loadingElement.style.display = 'block';
-            loadingElement.textContent = `Экспорт PNG 2K (×${exportSupersample})...`;
+            loadingElement.textContent = `Экспорт PNG ${getExportOutputLongEdge()}px (×${exportSupersample})...`;
             loadingElement.style.background = 'rgba(0, 0, 0, 0.8)';
 
             try {
