@@ -513,9 +513,9 @@
     <div class="export-settings">
         <span>Качество PNG:</span>
         <div class="export-quality-presets">
-            <button type="button" class="export-quality-btn active" data-supersample="2" title="Длинная сторона 2560 px">Стандарт ×2</button>
-            <button type="button" class="export-quality-btn" data-supersample="3" title="Длинная сторона 3840 px">Высокое ×3</button>
-            <button type="button" class="export-quality-btn" data-supersample="4" title="Длинная сторона 5120 px">Макс. ×4</button>
+            <button type="button" class="export-quality-btn active" data-supersample="2" title="2560 px, суперсэмпл ×2">Стандарт ×2</button>
+            <button type="button" class="export-quality-btn" data-supersample="3" title="3840 px, суперсэмпл ×3">Высокое ×3</button>
+            <button type="button" class="export-quality-btn" data-supersample="4" title="5120 px, суперсэмпл ×4">Макс. ×4</button>
         </div>
         <div class="export-shadow-toggle">
             <label for="shadowSwitch">Тень под авто</label>
@@ -708,7 +708,7 @@
             alpha: true
         });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.0;
@@ -796,8 +796,8 @@
         };
 
         const EXPORT_BASE_LONG_EDGE = 1280;
-        const EXPORT_AA_SCALE = 2;
         const EXPORT_MSAA_SAMPLES = 4;
+        const MAX_EXPORT_RENDER_EDGE = 8192;
         let exportSupersample = 2;
         let shadowsEnabled = false;
         let loadedModel = null;
@@ -1044,6 +1044,12 @@
             return EXPORT_BASE_LONG_EDGE * exportSupersample;
         }
 
+        function getExportAaScale(frameWidth, frameHeight) {
+            const longFrameEdge = Math.max(frameWidth, frameHeight);
+            const maxSupportedScale = Math.max(1, Math.floor(MAX_EXPORT_RENDER_EDGE / longFrameEdge));
+            return Math.min(exportSupersample, maxSupportedScale);
+        }
+
         function getExportFrameSize() {
             const longEdge = getExportOutputLongEdge();
 
@@ -1054,8 +1060,9 @@
         }
 
         async function renderToPngBlob(frameWidth, frameHeight, outputLongEdge, { transparent = true } = {}) {
-            const renderWidth = frameWidth * EXPORT_AA_SCALE;
-            const renderHeight = frameHeight * EXPORT_AA_SCALE;
+            const exportAaScale = getExportAaScale(frameWidth, frameHeight);
+            const renderWidth = frameWidth * exportAaScale;
+            const renderHeight = frameHeight * exportAaScale;
             const renderTarget = createExportRenderTarget(renderWidth, renderHeight);
 
             const prevRenderTarget = renderer.getRenderTarget();
@@ -1088,7 +1095,7 @@
 
                 cropBounds = expandPixelBounds(
                     cropBounds,
-                    2 * EXPORT_AA_SCALE,
+                    2 * exportAaScale,
                     renderWidth,
                     renderHeight
                 );
@@ -1151,8 +1158,9 @@
 
             const outputLongEdge = getExportOutputLongEdge();
             const { width, height } = getExportFrameSize();
+            const exportAaScale = getExportAaScale(width, height);
             const blob = await renderToPngBlob(width, height, outputLongEdge, { transparent: true });
-            downloadBlob(blob, `model-${outputLongEdge}px-${Date.now()}.png`);
+            downloadBlob(blob, `model-${outputLongEdge}px-ss${exportAaScale}-${Date.now()}.png`);
         }
 
         function setExportButtonsDisabled(disabled) {
@@ -1939,7 +1947,11 @@
         downloadPngBtn.addEventListener('click', async () => {
             setExportButtonsDisabled(true);
             loadingElement.style.display = 'block';
-            loadingElement.textContent = `Экспорт PNG ${getExportOutputLongEdge()}px (×${exportSupersample})...`;
+            loadingElement.textContent = (() => {
+                const { width, height } = getExportFrameSize();
+                const aa = getExportAaScale(width, height);
+                return `Экспорт PNG ${getExportOutputLongEdge()}px, суперсэмпл ×${aa}...`;
+            })();
             loadingElement.style.background = 'rgba(0, 0, 0, 0.8)';
 
             try {
@@ -1959,6 +1971,7 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         });
 
         let isPageVisible = !document.hidden;
