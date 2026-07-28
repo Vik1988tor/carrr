@@ -804,6 +804,7 @@
         let isModelLoading = true;
         const MODEL_FIT_SIZE = 4;
         const EXCLUDED_COLOR_MESH_PATTERN = /glass|window|greenhouse|windshield|light|lamp|drl|taillight|headlight|interior|seat|armrest|screen|steering|stw_/i;
+        const EXCLUDED_PBR_MESH_PATTERN = /\b(glass|window|windshield)\b|(?:^|\s)(?:light|lamp|drl|taillight|headlight)\b|interior|seat|armrest|screen|steering|stw_|ip\d/i;
         const MODEL_CANDIDATES = [
             new URL('Atom_simple.glb', import.meta.url).href,
             new URL('modelCinema.gltf', import.meta.url).href
@@ -859,6 +860,21 @@
             return true;
         }
 
+        function isPbrAdjustableSurface(material, mesh) {
+            if (!material?.isMaterial) return false;
+
+            const label = getSurfaceLabel(material, mesh);
+            if (EXCLUDED_PBR_MESH_PATTERN.test(label)) return false;
+
+            const matName = (material.name || '').toLowerCase();
+            if (/glass|chrome|rubber/i.test(matName)) return false;
+
+            return material.isMeshPhysicalMaterial
+                || material.isMeshStandardMaterial
+                || material.isMeshLambertMaterial
+                || material.color !== undefined;
+        }
+
         function disposeModelResources(model) {
             model.traverse((child) => {
                 if (!child.isMesh) return;
@@ -885,7 +901,7 @@
 
         function ensureExteriorMaterial(material, mesh) {
             if (!material || !material.isMaterial) return material;
-            if (!isColorableSurface(material, mesh)) return material;
+            if (!isPbrAdjustableSurface(material, mesh)) return material;
 
             try {
                 if (material.isMeshPhysicalMaterial) {
@@ -1747,7 +1763,7 @@
                 materials.forEach((mat) => {
                     if (!mat || !mat.isMaterial) return;
 
-                    if (isColorableSurface(mat, child)) {
+                    if (isPbrAdjustableSurface(mat, child)) {
                         applyExteriorPbr(mat);
                     }
 
