@@ -802,8 +802,10 @@
         let loadedModel = null;
         let isModelLoading = true;
         const MODEL_FIT_SIZE = 4;
-        const EXCLUDED_COLOR_MESH_PATTERN = /glass|window|greenhouse|windshield|light|lamp|drl|taillight|headlight|interior|seat|armrest|screen|steering|stw_/i;
-        const EXCLUDED_PBR_MESH_PATTERN = /\b(glass|window|windshield)\b|(?:^|\s)(?:light|lamp|drl|taillight|headlight)\b|interior|seat|armrest|screen|steering|stw_|ip\d/i;
+        const BODY_PAINT_MATERIAL_PATTERN = /carbody_paint|body.?paint/i;
+        const EXCLUDED_COLOR_INTERIOR_PATTERN = /interior|seat|armrest|screen|steering|stw_|ip\d/i;
+        const EXCLUDED_COLOR_LIGHT_GLASS_PATTERN = /\b(glass|window|windshield)\b|taillight|headlight|tail\s*light|front light/i;
+        const EXCLUDED_PBR_MESH_PATTERN = /\b(glass|window|windshield)\b|taillight|headlight|tail\s*light|front light|interior|seat|armrest|screen|steering|stw_|ip\d/i;
         const INTERIOR_MESH_PATTERN = /central armrest|front seat|interior frame|rear door|rear seat|armrest|\bseat\b|steering|stw_|dashboard|\bip\d/i;
         const MODEL_CANDIDATES = [
             new URL('Atom_simple.glb', import.meta.url).href,
@@ -898,10 +900,16 @@
             if (isTransparentSurface(material)) return false;
 
             const label = getSurfaceLabel(material, mesh);
-            if (EXCLUDED_COLOR_MESH_PATTERN.test(label)) return false;
-
             const matName = (material.name || '').toLowerCase();
+
             if (/glass|chrome|rubber/i.test(matName)) return false;
+            if (EXCLUDED_COLOR_INTERIOR_PATTERN.test(label)) return false;
+
+            if (BODY_PAINT_MATERIAL_PATTERN.test(matName)) {
+                return !EXCLUDED_COLOR_LIGHT_GLASS_PATTERN.test(label);
+            }
+
+            if (EXCLUDED_COLOR_LIGHT_GLASS_PATTERN.test(label)) return false;
 
             return true;
         }
