@@ -804,6 +804,7 @@
         const MODEL_FIT_SIZE = 4;
         const EXCLUDED_COLOR_MESH_PATTERN = /glass|window|greenhouse|windshield|light|lamp|drl|taillight|headlight|interior|seat|armrest|screen|steering|stw_/i;
         const EXCLUDED_PBR_MESH_PATTERN = /\b(glass|window|windshield)\b|(?:^|\s)(?:light|lamp|drl|taillight|headlight)\b|interior|seat|armrest|screen|steering|stw_|ip\d/i;
+        const INTERIOR_MESH_PATTERN = /central armrest|front seat|interior frame|rear door|rear seat|armrest|\bseat\b|steering|stw_|dashboard|\bip\d/i;
         const MODEL_CANDIDATES = [
             new URL('Atom_simple.glb', import.meta.url).href,
             new URL('modelCinema.gltf', import.meta.url).href
@@ -811,6 +812,52 @@
 
         function getSurfaceLabel(material, mesh) {
             return `${material?.name || ''} ${mesh?.name || ''}`.toLowerCase();
+        }
+
+        function usesInteriorMaterial(mesh) {
+            const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+
+            return materials.every((material) => {
+                const matName = (material?.name || '').toLowerCase();
+                return (/adskmat|^default$/.test(matName) && !/carbody_paint|paint/i.test(matName))
+                    || matName === 'fallback material';
+            });
+        }
+
+        function isInteriorMesh(mesh) {
+            if (!mesh?.isMesh) return false;
+
+            const name = (mesh.name || '').toLowerCase();
+            if (INTERIOR_MESH_PATTERN.test(name)) return true;
+
+            if (!usesInteriorMaterial(mesh)) return false;
+
+            if (/^object00[123]$/.test(name)) return true;
+            if (/^(box001|new_shape001)$/.test(name)) return true;
+            if (/^atom(\s+\d+)?$/.test(name)) return true;
+
+            return false;
+        }
+
+        function hideInteriorMeshes(model) {
+            model.traverse((child) => {
+                if (isInteriorMesh(child)) {
+                    child.visible = false;
+                }
+            });
+        }
+
+        function getVisibleModelBox(model) {
+            const box = new THREE.Box3();
+            const meshBox = new THREE.Box3();
+
+            model.traverse((child) => {
+                if (!child.isMesh || !child.visible) return;
+                meshBox.setFromObject(child);
+                box.union(meshBox);
+            });
+
+            return box;
         }
 
         function isTransparentSurface(material) {
@@ -1614,8 +1661,9 @@
 
             try {
                 loadedModel = model;
+                hideInteriorMeshes(model);
 
-                const box = new THREE.Box3().setFromObject(model);
+                const box = getVisibleModelBox(model);
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
 
@@ -1628,7 +1676,7 @@
                 scene.add(model);
                 setupModelForExportQuality(model);
 
-                const finalBox = new THREE.Box3().setFromObject(model);
+                const finalBox = getVisibleModelBox(model);
                 shadowGround.position.y = finalBox.min.y - 0.01;
 
                 const distance = MODEL_FIT_SIZE * 0.9;
