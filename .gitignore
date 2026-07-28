@@ -1,2 +1,4 @@
 carrr/
 .claude/
+node_modules/
+vendor/three/examples/jsm_full/
