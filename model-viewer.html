@@ -796,7 +796,6 @@
         };
 
         const EXPORT_BASE_LONG_EDGE = 1280;
-        const EXPORT_MSAA_SAMPLES = 4;
         const MAX_EXPORT_RENDER_EDGE = 8192;
         let exportSupersample = 2;
         let shadowsEnabled = false;
@@ -952,18 +951,13 @@
         }
 
         function createExportRenderTarget(width, height) {
-            const options = {
+            return new THREE.WebGLRenderTarget(width, height, {
                 format: THREE.RGBAFormat,
                 type: THREE.UnsignedByteType,
                 colorSpace: THREE.SRGBColorSpace,
-                depthBuffer: true
-            };
-
-            if (renderer.capabilities.isWebGL2) {
-                options.samples = EXPORT_MSAA_SAMPLES;
-            }
-
-            return new THREE.WebGLRenderTarget(width, height, options);
+                depthBuffer: true,
+                samples: 0
+            });
         }
 
         function flipPixelsToImageData(pixels, width, height) {
@@ -1040,27 +1034,42 @@
             return cropped;
         }
 
+        function getMaxExportRenderEdge() {
+            const gpuLimit = renderer.capabilities.maxTextureSize || MAX_EXPORT_RENDER_EDGE;
+            return Math.min(MAX_EXPORT_RENDER_EDGE, gpuLimit);
+        }
+
         function getExportOutputLongEdge() {
             return EXPORT_BASE_LONG_EDGE * exportSupersample;
         }
 
         function getExportAaScale(frameWidth, frameHeight) {
             const longFrameEdge = Math.max(frameWidth, frameHeight);
-            const maxSupportedScale = Math.max(1, Math.floor(MAX_EXPORT_RENDER_EDGE / longFrameEdge));
+            const maxSupportedScale = Math.max(1, Math.floor(getMaxExportRenderEdge() / longFrameEdge));
             return Math.min(exportSupersample, maxSupportedScale);
         }
 
         function getExportFrameSize() {
-            const longEdge = getExportOutputLongEdge();
+            const outputLongEdge = getExportOutputLongEdge();
+            const frameLongEdge = Math.min(outputLongEdge, getMaxExportRenderEdge());
+            const aspect = camera.aspect;
+
+            if (aspect >= 1) {
+                return {
+                    width: frameLongEdge,
+                    height: Math.max(1, Math.round(frameLongEdge / aspect)),
+                    outputLongEdge
+                };
+            }
 
             return {
-                width: longEdge,
-                height: Math.max(1, Math.round(longEdge / camera.aspect))
+                width: Math.max(1, Math.round(frameLongEdge * aspect)),
+                height: frameLongEdge,
+                outputLongEdge
             };
         }
 
-        async function renderToPngBlob(frameWidth, frameHeight, outputLongEdge, { transparent = true } = {}) {
-            const exportAaScale = getExportAaScale(frameWidth, frameHeight);
+        async function renderToPngBlobAttempt(frameWidth, frameHeight, outputLongEdge, exportAaScale, { transparent = true } = {}) {
             const renderWidth = frameWidth * exportAaScale;
             const renderHeight = frameHeight * exportAaScale;
             const renderTarget = createExportRenderTarget(renderWidth, renderHeight);
@@ -1140,6 +1149,30 @@
             }
         }
 
+        async function renderToPngBlob(frameWidth, frameHeight, outputLongEdge, options = {}) {
+            let exportAaScale = getExportAaScale(frameWidth, frameHeight);
+            let lastError = null;
+
+            while (exportAaScale >= 1) {
+                try {
+                    return await renderToPngBlobAttempt(
+                        frameWidth,
+                        frameHeight,
+                        outputLongEdge,
+                        exportAaScale,
+                        options
+                    );
+                } catch (error) {
+                    lastError = error;
+                    console.warn(`Экспорт не удался при суперсэмпле ×${exportAaScale}, пробуем ниже:`, error);
+                    if (exportAaScale <= 1) break;
+                    exportAaScale = Math.max(1, Math.floor(exportAaScale / 2));
+                }
+            }
+
+            throw lastError || new Error('Не удалось экспортировать PNG. Попробуйте меньшее качество.');
+        }
+
         function downloadBlob(blob, filename) {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -1156,8 +1189,7 @@
                 throw new Error('Модель ещё не загружена');
             }
 
-            const outputLongEdge = getExportOutputLongEdge();
-            const { width, height } = getExportFrameSize();
+            const { width, height, outputLongEdge } = getExportFrameSize();
             const exportAaScale = getExportAaScale(width, height);
             const blob = await renderToPngBlob(width, height, outputLongEdge, { transparent: true });
             downloadBlob(blob, `model-${outputLongEdge}px-ss${exportAaScale}-${Date.now()}.png`);
@@ -1948,9 +1980,9 @@
             setExportButtonsDisabled(true);
             loadingElement.style.display = 'block';
             loadingElement.textContent = (() => {
-                const { width, height } = getExportFrameSize();
+                const { width, height, outputLongEdge } = getExportFrameSize();
                 const aa = getExportAaScale(width, height);
-                return `Экспорт PNG ${getExportOutputLongEdge()}px, суперсэмпл ×${aa}...`;
+                return `Экспорт PNG ${outputLongEdge}px, суперсэмпл ×${aa}...`;
             })();
             loadingElement.style.background = 'rgba(0, 0, 0, 0.8)';
 
