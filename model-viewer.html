@@ -961,6 +961,68 @@
             return imageData;
         }
 
+        function findOpaquePixelBounds(imageData, alphaThreshold = 2) {
+            const { data, width, height } = imageData;
+            let minX = width;
+            let minY = height;
+            let maxX = -1;
+            let maxY = -1;
+
+            for (let y = 0; y < height; y++) {
+                const rowStart = y * width * 4;
+                for (let x = 0; x < width; x++) {
+                    const alpha = data[rowStart + x * 4 + 3];
+                    if (alpha <= alphaThreshold) continue;
+
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+
+            if (maxX < minX || maxY < minY) return null;
+
+            return {
+                x: minX,
+                y: minY,
+                width: maxX - minX + 1,
+                height: maxY - minY + 1
+            };
+        }
+
+        function expandPixelBounds(bounds, padding, maxWidth, maxHeight) {
+            const x = Math.max(0, bounds.x - padding);
+            const y = Math.max(0, bounds.y - padding);
+            const right = Math.min(maxWidth - 1, bounds.x + bounds.width - 1 + padding);
+            const bottom = Math.min(maxHeight - 1, bounds.y + bounds.height - 1 + padding);
+
+            return {
+                x,
+                y,
+                width: right - x + 1,
+                height: bottom - y + 1
+            };
+        }
+
+        function cropImageData(imageData, bounds) {
+            const cropped = new ImageData(bounds.width, bounds.height);
+            const { data, width } = imageData;
+
+            for (let y = 0; y < bounds.height; y++) {
+                for (let x = 0; x < bounds.width; x++) {
+                    const srcIndex = ((bounds.y + y) * width + (bounds.x + x)) * 4;
+                    const dstIndex = (y * bounds.width + x) * 4;
+                    cropped.data[dstIndex] = data[srcIndex];
+                    cropped.data[dstIndex + 1] = data[srcIndex + 1];
+                    cropped.data[dstIndex + 2] = data[srcIndex + 2];
+                    cropped.data[dstIndex + 3] = data[srcIndex + 3];
+                }
+            }
+
+            return cropped;
+        }
+
         async function renderToPngBlob(width, height, { transparent = true } = {}) {
             const supersample = exportSupersample;
             const renderWidth = width * supersample;
@@ -989,22 +1051,36 @@
                 const pixels = new Uint8Array(renderWidth * renderHeight * 4);
                 renderer.readRenderTargetPixels(renderTarget, 0, 0, renderWidth, renderHeight, pixels);
 
-                const sourceCanvas = document.createElement('canvas');
-                sourceCanvas.width = renderWidth;
-                sourceCanvas.height = renderHeight;
-                sourceCanvas.getContext('2d').putImageData(
-                    flipPixelsToImageData(pixels, renderWidth, renderHeight),
-                    0,
-                    0
+                const imageData = flipPixelsToImageData(pixels, renderWidth, renderHeight);
+                let cropBounds = findOpaquePixelBounds(imageData);
+                if (!cropBounds) {
+                    throw new Error('На изображении не найдена модель для экспорта.');
+                }
+
+                cropBounds = expandPixelBounds(
+                    cropBounds,
+                    2 * supersample,
+                    renderWidth,
+                    renderHeight
                 );
 
+                const croppedImageData = cropImageData(imageData, cropBounds);
+                const croppedCanvas = document.createElement('canvas');
+                croppedCanvas.width = cropBounds.width;
+                croppedCanvas.height = cropBounds.height;
+                croppedCanvas.getContext('2d').putImageData(croppedImageData, 0, 0);
+
+                const longestSide = Math.max(cropBounds.width, cropBounds.height);
+                const outputWidth = Math.max(1, Math.round((cropBounds.width / longestSide) * width));
+                const outputHeight = Math.max(1, Math.round((cropBounds.height / longestSide) * width));
+
                 const outputCanvas = document.createElement('canvas');
-                outputCanvas.width = width;
-                outputCanvas.height = height;
+                outputCanvas.width = outputWidth;
+                outputCanvas.height = outputHeight;
                 const outputCtx = outputCanvas.getContext('2d');
                 outputCtx.imageSmoothingEnabled = true;
                 outputCtx.imageSmoothingQuality = 'high';
-                outputCtx.drawImage(sourceCanvas, 0, 0, width, height);
+                outputCtx.drawImage(croppedCanvas, 0, 0, outputWidth, outputHeight);
 
                 const blob = await new Promise((resolve, reject) => {
                     outputCanvas.toBlob((result) => {
