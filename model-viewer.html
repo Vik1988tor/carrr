@@ -25,39 +25,6 @@
             height: 100vh;
         }
 
-        .controls-panel {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 20px;
-            border-radius: 10px;
-            color: white;
-            backdrop-filter: blur(10px);
-            max-width: 280px;
-        }
-
-        .controls-panel h3 {
-            margin-bottom: 15px;
-            font-size: 16px;
-            font-weight: 600;
-        }
-
-        .control-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 12px;
-            font-size: 14px;
-            line-height: 1.4;
-        }
-
-        .control-item::before {
-            content: "•";
-            margin-right: 10px;
-            color: #4a9eff;
-            font-size: 20px;
-        }
-
         .download-button {
             position: absolute;
             bottom: 20px;
@@ -90,15 +57,6 @@
             opacity: 0.6;
             cursor: wait;
             transform: none;
-        }
-
-        .download-button.secondary {
-            background: #5533AA;
-        }
-
-        .download-button.secondary:hover {
-            background: #4422AA;
-            box-shadow: 0 4px 12px rgba(85, 51, 170, 0.4);
         }
 
         .color-controls {
@@ -569,7 +527,7 @@
     </div>
 
     <div style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; z-index: 100; flex-wrap: wrap; justify-content: center; max-width: 90vw;">
-        <button class="download-button" id="downloadPngBtn" style="position: relative; left: auto; bottom: auto; transform: none;">Скачать PNG (2K)</button>
+        <button class="download-button" id="downloadPngBtn" disabled style="position: relative; left: auto; bottom: auto; transform: none;">Скачать PNG (2K)</button>
     </div>
     <div class="color-controls">
         <h3>Цвет модели</h3>
@@ -639,9 +597,9 @@
         </div>
 
         <div class="control-group">
-            <label>Яркость<span class="value-display" id="intensityValue">200</span></label>
+            <label>Яркость<span class="value-display" id="intensityValue">80</span></label>
             <button class="reset-param-btn" id="resetIntensity">Сброс</button>
-            <input type="range" id="lightIntensity" min="0" max="500" value="200" step="10">
+            <input type="range" id="lightIntensity" min="0" max="200" value="80" step="5">
         </div>
 
         <div class="control-group">
@@ -682,6 +640,39 @@
     </div>
 
     <div class="loading" id="loading">Загрузка модели</div>
+
+    <script>
+        (function () {
+            if (location.protocol !== 'file:') return;
+
+            function showFileProtocolHelp() {
+                const loading = document.getElementById('loading');
+                if (!loading) return;
+
+                loading.style.display = 'block';
+                loading.style.background = 'rgba(180, 40, 40, 0.95)';
+                loading.style.padding = '20px 24px';
+                loading.style.maxWidth = 'min(560px, 92vw)';
+                loading.style.lineHeight = '1.5';
+                loading.style.whiteSpace = 'normal';
+                loading.style.textAlign = 'left';
+                loading.innerHTML = [
+                    '<strong>Файл открыт напрямую (file://)</strong><br>',
+                    'Браузер блокирует загрузку 3D-модели в этом режиме.<br><br>',
+                    'Запустите локальный сервер в папке проекта:<br>',
+                    '<code style="background:rgba(0,0,0,.3);padding:4px 8px;border-radius:4px;">python3 -m http.server 8765</code><br><br>',
+                    'Затем откройте:<br>',
+                    '<code style="background:rgba(0,0,0,.3);padding:4px 8px;border-radius:4px;">http://localhost:8765/model-viewer.html</code>'
+                ].join('');
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', showFileProtocolHelp);
+            } else {
+                showFileProtocolHelp();
+            }
+        })();
+    </script>
 
     <script type="importmap">
     {
@@ -771,42 +762,34 @@
 
         // Сохранение начальной позиции камеры
         const initialCameraPosition = camera.position.clone();
-        const initialControlsTarget = new THREE.Vector3(0, 0, 0);
 
         // Пресеты камеры для эффектных фото
         const cameraPresets = {
             front34: {
-                label: 'front34',
                 position: { x: 6, y: 3, z: 6 },
                 target: { x: 0, y: 0, z: 0 }
             },
             rear34: {
-                label: 'rear34',
                 position: { x: -6, y: 3, z: -6 },
                 target: { x: 0, y: 0, z: 0 }
             },
             side: {
-                label: 'side',
                 position: { x: 0, y: 2, z: 8 },
                 target: { x: 0, y: 0, z: 0 }
             },
             front: {
-                label: 'front',
                 position: { x: -8, y: 2, z: 0 },
                 target: { x: 0, y: 0, z: 0 }
             },
             back: {
-                label: 'back',
                 position: { x: 8, y: 2, z: 0 },
                 target: { x: 0, y: 0, z: 0 }
             },
             low: {
-                label: 'low',
                 position: { x: 5, y: 0.5, z: 5 },
                 target: { x: 0, y: 1, z: 0 }
             },
             top: {
-                label: 'top',
                 position: { x: 0, y: 10, z: 0.1 },
                 target: { x: 0, y: 0, z: 0 }
             }
@@ -817,13 +800,60 @@
         let exportSupersample = 2;
         let shadowsEnabled = false;
         let loadedModel = null;
+        let isModelLoading = true;
+        const MODEL_FIT_SIZE = 4;
+        const EXCLUDED_MATERIAL_PATTERN = /glass|window|tire|tyre|wheel|rim|chrome|light|lamp|interior|mirror|brake|disc|rubber/i;
+        const INCLUDED_MATERIAL_PATTERN = /body|paint|car|lacquer|shell|exterior|default|adskmat/i;
         const MODEL_CANDIDATES = [
             new URL('Atom_simple.glb', import.meta.url).href,
             new URL('modelCinema.gltf', import.meta.url).href
         ];
 
-        function upgradeMaterialToPhysical(material) {
+        function getSurfaceLabel(material, mesh) {
+            return `${material?.name || ''} ${mesh?.name || ''}`.toLowerCase();
+        }
+
+        function isPaintableSurface(material, mesh) {
+            if (!material?.isMaterial) return false;
+            if (material.transparent || (material.opacity !== undefined && material.opacity < 0.99)) {
+                return false;
+            }
+
+            const label = getSurfaceLabel(material, mesh);
+            if (EXCLUDED_MATERIAL_PATTERN.test(label)) return false;
+            if (INCLUDED_MATERIAL_PATTERN.test(label)) return true;
+
+            if (material.isMeshPhysicalMaterial && material.transmission > 0) return false;
+            return material.isMeshStandardMaterial || material.isMeshPhysicalMaterial;
+        }
+
+        function disposeModelResources(model) {
+            model.traverse((child) => {
+                if (!child.isMesh) return;
+
+                child.geometry?.dispose();
+
+                const materials = Array.isArray(child.material) ? child.material : [child.material];
+                materials.forEach((material) => {
+                    if (!material) return;
+
+                    for (const value of Object.values(material)) {
+                        if (value?.isTexture) value.dispose();
+                    }
+                    material.dispose();
+                });
+            });
+        }
+
+        function updateExportButtonState() {
+            const btn = document.getElementById('downloadPngBtn');
+            if (!btn) return;
+            btn.disabled = isModelLoading || !loadedModel;
+        }
+
+        function upgradeMaterialToPhysical(material, mesh) {
             if (!material || !material.isMaterial) return material;
+            if (!isPaintableSurface(material, mesh)) return material;
 
             try {
                 if (material.isMeshPhysicalMaterial) {
@@ -834,8 +864,21 @@
                 }
 
                 if (material.isMeshStandardMaterial) {
-                    const physical = new THREE.MeshPhysicalMaterial();
-                    physical.copy(material);
+                    const physical = new THREE.MeshPhysicalMaterial({
+                        name: material.name,
+                        color: material.color,
+                        roughness: material.roughness,
+                        metalness: material.metalness,
+                        map: material.map,
+                        normalMap: material.normalMap,
+                        aoMap: material.aoMap,
+                        emissive: material.emissive,
+                        emissiveMap: material.emissiveMap,
+                        transparent: material.transparent,
+                        opacity: material.opacity,
+                        side: material.side,
+                        vertexColors: material.vertexColors
+                    });
                     physical.clearcoat = 1.0;
                     physical.clearcoatRoughness = 0.08;
                     physical.envMapIntensity = 1.0;
@@ -853,22 +896,12 @@
                 if (!child.isMesh) return;
 
                 if (Array.isArray(child.material)) {
-                    child.material = child.material.map(upgradeMaterialToPhysical);
+                    child.material = child.material.map((mat) => upgradeMaterialToPhysical(mat, child));
                 } else {
-                    child.material = upgradeMaterialToPhysical(child.material);
+                    child.material = upgradeMaterialToPhysical(child.material, child);
                 }
             });
             applyShadowSettings();
-        }
-
-        function setCameraToPreset(presetName) {
-            const preset = cameraPresets[presetName];
-            if (!preset) return;
-
-            camera.position.set(preset.position.x, preset.position.y, preset.position.z);
-            controls.target.set(preset.target.x, preset.target.y, preset.target.z);
-            camera.lookAt(controls.target);
-            controls.update();
         }
 
         function createExportRenderTarget(width, height) {
@@ -898,7 +931,7 @@
             return imageData;
         }
 
-        function renderToPngBlob(width, height, { transparent = true } = {}) {
+        async function renderToPngBlob(width, height, { transparent = true } = {}) {
             const supersample = exportSupersample;
             const renderWidth = width * supersample;
             const renderHeight = height * supersample;
@@ -910,49 +943,59 @@
             const prevGroundVisible = shadowGround.visible;
             const prevAspect = camera.aspect;
 
-            scene.background = transparent ? null : prevBackground;
-            lightHelper.visible = false;
-            shadowGround.visible = shadowsEnabled;
+            try {
+                scene.background = transparent ? null : prevBackground;
+                lightHelper.visible = false;
+                shadowGround.visible = shadowsEnabled;
 
-            camera.aspect = width / height;
-            camera.updateProjectionMatrix();
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
 
-            renderer.setRenderTarget(renderTarget);
-            renderer.setClearColor(0x000000, 0);
-            renderer.clear();
-            renderer.render(scene, camera);
+                renderer.setRenderTarget(renderTarget);
+                renderer.setClearColor(0x000000, 0);
+                renderer.clear();
+                renderer.render(scene, camera);
 
-            const pixels = new Uint8Array(renderWidth * renderHeight * 4);
-            renderer.readRenderTargetPixels(renderTarget, 0, 0, renderWidth, renderHeight, pixels);
+                const pixels = new Uint8Array(renderWidth * renderHeight * 4);
+                renderer.readRenderTargetPixels(renderTarget, 0, 0, renderWidth, renderHeight, pixels);
 
-            const sourceCanvas = document.createElement('canvas');
-            sourceCanvas.width = renderWidth;
-            sourceCanvas.height = renderHeight;
-            sourceCanvas.getContext('2d').putImageData(
-                flipPixelsToImageData(pixels, renderWidth, renderHeight),
-                0,
-                0
-            );
+                const sourceCanvas = document.createElement('canvas');
+                sourceCanvas.width = renderWidth;
+                sourceCanvas.height = renderHeight;
+                sourceCanvas.getContext('2d').putImageData(
+                    flipPixelsToImageData(pixels, renderWidth, renderHeight),
+                    0,
+                    0
+                );
 
-            const outputCanvas = document.createElement('canvas');
-            outputCanvas.width = width;
-            outputCanvas.height = height;
-            const outputCtx = outputCanvas.getContext('2d');
-            outputCtx.imageSmoothingEnabled = true;
-            outputCtx.imageSmoothingQuality = 'high';
-            outputCtx.drawImage(sourceCanvas, 0, 0, width, height);
+                const outputCanvas = document.createElement('canvas');
+                outputCanvas.width = width;
+                outputCanvas.height = height;
+                const outputCtx = outputCanvas.getContext('2d');
+                outputCtx.imageSmoothingEnabled = true;
+                outputCtx.imageSmoothingQuality = 'high';
+                outputCtx.drawImage(sourceCanvas, 0, 0, width, height);
 
-            renderer.setRenderTarget(prevRenderTarget);
-            scene.background = prevBackground;
-            lightHelper.visible = prevHelperVisible;
-            shadowGround.visible = prevGroundVisible;
-            camera.aspect = prevAspect;
-            camera.updateProjectionMatrix();
-            renderTarget.dispose();
+                const blob = await new Promise((resolve, reject) => {
+                    outputCanvas.toBlob((result) => {
+                        if (!result) {
+                            reject(new Error('Не удалось создать PNG. Попробуйте меньшее качество экспорта.'));
+                            return;
+                        }
+                        resolve(result);
+                    }, 'image/png');
+                });
 
-            return new Promise((resolve) => {
-                outputCanvas.toBlob((blob) => resolve(blob), 'image/png');
-            });
+                return blob;
+            } finally {
+                renderer.setRenderTarget(prevRenderTarget);
+                scene.background = prevBackground;
+                lightHelper.visible = prevHelperVisible;
+                shadowGround.visible = prevGroundVisible;
+                camera.aspect = prevAspect;
+                camera.updateProjectionMatrix();
+                renderTarget.dispose();
+            }
         }
 
         function getExportDimensions() {
@@ -973,6 +1016,10 @@
         }
 
         async function exportCurrentViewPng() {
+            if (isModelLoading || !loadedModel) {
+                throw new Error('Модель ещё не загружена');
+            }
+
             const { width, height } = getExportDimensions();
             const blob = await renderToPngBlob(width, height, { transparent: true });
             downloadBlob(blob, `model-${Date.now()}.png`);
@@ -980,15 +1027,22 @@
 
         function setExportButtonsDisabled(disabled) {
             const btn = document.getElementById('downloadPngBtn');
-            if (btn) btn.disabled = disabled;
+            if (!btn) return;
+            if (disabled) {
+                btn.disabled = true;
+                return;
+            }
+            updateExportButtonState();
         }
 
         // Освещение
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
         scene.add(ambientLight);
 
-        // Основной управляемый свет - используем PointLight для затухания
-        const pointLight = new THREE.PointLight(0xffffff, 200, 0, 1);
+        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x2a2a2a, 0.35);
+        scene.add(hemisphereLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 80, 0, 2);
         pointLight.position.set(5, 10, 7.5);
         pointLight.castShadow = false;
         pointLight.shadow.mapSize.set(2048, 2048);
@@ -1033,20 +1087,20 @@
                 color: 0xffeb3b
             })
         );
+        lightHelper.visible = false;
         scene.add(lightHelper);
 
-        // Вспомогательный свет (статичный) - теперь тоже PointLight для консистентности
-        const fillLight = new THREE.PointLight(0xffffff, 30, 0, 1);
+        const fillLight = new THREE.PointLight(0xffffff, 18, 0, 2);
         fillLight.position.set(-5, 5, -5);
         scene.add(fillLight);
 
         // Параметры освещения (значения по умолчанию)
         const defaultLightParams = {
             angle: 0,
-            elevation: 45, // В градусах (0-90)
+            elevation: 45,
             distance: 7.5,
-            intensity: 200, // Базовая интенсивность для PointLight
-            temperature: 5500 // Кельвины (2700 - теплый, 6500 - холодный)
+            intensity: 80,
+            temperature: 5500
         };
 
         let lightAngle = defaultLightParams.angle;
@@ -1398,7 +1452,7 @@
                 model.position.sub(center);
 
                 const maxDim = Math.max(size.x, size.y, size.z);
-                const scale = 4 / maxDim;
+                const scale = MODEL_FIT_SIZE / maxDim;
                 model.scale.setScalar(scale);
 
                 scene.add(model);
@@ -1407,7 +1461,7 @@
                 const finalBox = new THREE.Box3().setFromObject(model);
                 shadowGround.position.y = finalBox.min.y - 0.01;
 
-                const distance = maxDim * 0.9;
+                const distance = MODEL_FIT_SIZE * 0.9;
                 camera.position.set(distance, distance, distance);
                 camera.lookAt(0, 0, 0);
                 controls.target.set(0, 0, 0);
@@ -1436,26 +1490,38 @@
                     });
                 }
                 isGrayMode = false;
+                isModelLoading = false;
 
                 loadingElement.style.display = 'none';
                 loadEnvironmentMap();
+                updateExportButtonState();
 
                 console.log('Модель успешно загружена:', modelPath);
             } catch (error) {
                 console.error('Ошибка обработки модели:', modelPath, error);
                 scene.remove(model);
                 loadedModel = null;
+                isModelLoading = false;
+                updateExportButtonState();
                 showLoadingError(`Ошибка обработки модели: ${error.message}`);
             }
         }
 
         function tryLoadModel(candidateIndex = 0) {
             if (candidateIndex >= MODEL_CANDIDATES.length) {
-                showLoadingError('Не удалось загрузить модель. Проверьте подключение к сети.');
+                isModelLoading = false;
+                updateExportButtonState();
+                if (window.location.protocol === 'file:') {
+                    showLoadingError('Модель недоступна через file://. Запустите python3 -m http.server 8765 и откройте http://localhost:8765/model-viewer.html');
+                } else {
+                    showLoadingError('Не удалось загрузить модель. Проверьте, что Atom_simple.glb лежит рядом с HTML и есть интернет для Three.js.');
+                }
                 return;
             }
 
             const modelPath = MODEL_CANDIDATES[candidateIndex];
+            isModelLoading = true;
+            updateExportButtonState();
 
             loadingElement.style.display = 'block';
             loadingElement.textContent = candidateIndex === 0
@@ -1464,6 +1530,7 @@
             loadingElement.style.background = 'rgba(0, 0, 0, 0.8)';
 
             if (loadedModel) {
+                disposeModelResources(loadedModel);
                 scene.remove(loadedModel);
                 loadedModel = null;
             }
@@ -1525,19 +1592,14 @@
             const finalColor = applyContrast(currentBaseColor, currentContrast);
 
             loadedModel.traverse((child) => {
-                if (child.isMesh) {
-                    if (Array.isArray(child.material)) {
-                        child.material.forEach((mat) => {
-                            if (mat.isMaterial) {
-                                mat.color.copy(finalColor);
-                                mat.needsUpdate = true;
-                            }
-                        });
-                    } else if (child.material && child.material.isMaterial) {
-                        child.material.color.copy(finalColor);
-                        child.material.needsUpdate = true;
-                    }
-                }
+                if (!child.isMesh) return;
+
+                const materials = Array.isArray(child.material) ? child.material : [child.material];
+                materials.forEach((mat) => {
+                    if (!mat?.isMaterial || !isPaintableSurface(mat, child)) return;
+                    mat.color.copy(finalColor);
+                    mat.needsUpdate = true;
+                });
             });
         }
 
@@ -1569,29 +1631,28 @@
             if (!loadedModel) return;
 
             loadedModel.traverse((child) => {
-                if (child.isMesh) {
-                    const materials = Array.isArray(child.material)
-                        ? child.material
-                        : [child.material];
+                if (!child.isMesh) return;
 
-                    materials.forEach((mat) => {
-                        if (!mat || !mat.isMaterial) return;
+                const materials = Array.isArray(child.material)
+                    ? child.material
+                    : [child.material];
 
-                        // roughness и metalness только для PBR материалов
-                        if (supportsPBRProperties(mat)) {
-                            mat.roughness = currentRoughness;
-                            mat.metalness = currentMetalness;
-                        }
+                materials.forEach((mat) => {
+                    if (!mat || !mat.isMaterial) return;
 
-                        if (mat.isMeshPhysicalMaterial) {
-                            mat.clearcoat = 1.0;
-                            mat.clearcoatRoughness = Math.min(currentRoughness * 0.15, 0.12);
-                            mat.envMapIntensity = 1.0;
-                        }
+                    if (supportsPBRProperties(mat) && isPaintableSurface(mat, child)) {
+                        mat.roughness = currentRoughness;
+                        mat.metalness = currentMetalness;
+                    }
 
-                        mat.needsUpdate = true;
-                    });
-                }
+                    if (mat.isMeshPhysicalMaterial && isPaintableSurface(mat, child)) {
+                        mat.clearcoat = 1.0;
+                        mat.clearcoatRoughness = Math.min(currentRoughness * 0.15, 0.12);
+                        mat.envMapIntensity = 1.0;
+                    }
+
+                    mat.needsUpdate = true;
+                });
             });
         }
 
@@ -1753,6 +1814,7 @@
         });
 
         // Загружаем основную модель по умолчанию
+        updateExportButtonState();
         tryLoadModel();
 
         // Кнопки экспорта PNG
@@ -1783,9 +1845,17 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
+        let isPageVisible = !document.hidden;
+        document.addEventListener('visibilitychange', () => {
+            isPageVisible = !document.hidden;
+        });
+
         // Цикл анимации
         function animate() {
             requestAnimationFrame(animate);
+
+            if (!isPageVisible) return;
+
             controls.update();
 
             // В режиме привязки к модели обновляем позицию света каждый кадр
