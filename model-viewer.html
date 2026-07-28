@@ -802,8 +802,10 @@
         let loadedModel = null;
         let isModelLoading = true;
         const MODEL_FIT_SIZE = 4;
-        const EXCLUDED_MATERIAL_PATTERN = /glass|window|tire|tyre|wheel|rim|chrome|light|lamp|interior|mirror|brake|disc|rubber/i;
-        const INCLUDED_MATERIAL_PATTERN = /body|paint|car|lacquer|shell|exterior|default|adskmat/i;
+        const BODY_PAINT_MATERIAL_PATTERN = /carbody_paint|body.?paint/i;
+        const EXCLUDED_COLOR_MESH_PATTERN = /glass|window|greenhouse|windshield|light|lamp|drl|taillight|headlight|interior|seat|armrest|screen|steering|stw_/i;
+        const EXCLUDED_PBR_MESH_PATTERN = /glass|window|greenhouse|windshield|tire|tyre|wheel|rim|chrome|light|lamp|drl|taillight|headlight|interior|mirror|brake|disc|rubber|seat|armrest|screen|steering|stw_/i;
+        const INCLUDED_PBR_MATERIAL_PATTERN = /body|paint|car|lacquer|shell|exterior|default|adskmat/i;
         const MODEL_CANDIDATES = [
             new URL('Atom_simple.glb', import.meta.url).href,
             new URL('modelCinema.gltf', import.meta.url).href
@@ -813,17 +815,37 @@
             return `${material?.name || ''} ${mesh?.name || ''}`.toLowerCase();
         }
 
-        function isPaintableSurface(material, mesh) {
-            if (!material?.isMaterial) return false;
-            if (material.transparent || (material.opacity !== undefined && material.opacity < 0.99)) {
-                return false;
+        function isTransparentSurface(material) {
+            if (!material?.isMaterial) return true;
+            if (material.transparent || (material.opacity !== undefined && material.opacity < 0.95)) {
+                return true;
             }
+            return material.isMeshPhysicalMaterial && material.transmission > 0;
+        }
+
+        function isColorableSurface(material, mesh) {
+            if (!material?.isMaterial || material.color === undefined) return false;
+            if (isTransparentSurface(material)) return false;
 
             const label = getSurfaceLabel(material, mesh);
-            if (EXCLUDED_MATERIAL_PATTERN.test(label)) return false;
-            if (INCLUDED_MATERIAL_PATTERN.test(label)) return true;
+            if (EXCLUDED_COLOR_MESH_PATTERN.test(label)) return false;
 
-            if (material.isMeshPhysicalMaterial && material.transmission > 0) return false;
+            const matName = (material.name || '').toLowerCase();
+            if (/glass|chrome|rubber/i.test(matName)) return false;
+
+            return true;
+        }
+
+        function isPaintableSurface(material, mesh) {
+            if (!material?.isMaterial || !isColorableSurface(material, mesh)) return false;
+
+            const label = getSurfaceLabel(material, mesh);
+            if (EXCLUDED_PBR_MESH_PATTERN.test(label)) return false;
+
+            const matName = (material.name || '').toLowerCase();
+            if (BODY_PAINT_MATERIAL_PATTERN.test(matName)) return true;
+            if (INCLUDED_PBR_MATERIAL_PATTERN.test(label)) return true;
+
             return material.isMeshStandardMaterial || material.isMeshPhysicalMaterial;
         }
 
@@ -1596,7 +1618,7 @@
 
                 const materials = Array.isArray(child.material) ? child.material : [child.material];
                 materials.forEach((mat) => {
-                    if (!mat?.isMaterial || !isPaintableSurface(mat, child)) return;
+                    if (!mat?.isMaterial || !isColorableSurface(mat, child)) return;
                     mat.color.copy(finalColor);
                     mat.needsUpdate = true;
                 });
