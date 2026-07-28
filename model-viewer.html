@@ -850,16 +850,37 @@
         }
 
         function getVisibleModelBox(model) {
+            model.updateMatrixWorld(true);
             const box = new THREE.Box3();
-            const meshBox = new THREE.Box3();
 
             model.traverse((child) => {
                 if (!child.isMesh || !child.visible) return;
-                meshBox.setFromObject(child);
-                box.union(meshBox);
+                box.expandByObject(child);
             });
 
             return box;
+        }
+
+        function fitModelToScene(model) {
+            model.updateMatrixWorld(true);
+
+            let box = getVisibleModelBox(model);
+            if (box.isEmpty()) {
+                box = new THREE.Box3().setFromObject(model);
+            }
+            if (box.isEmpty()) {
+                throw new Error('Модель не содержит видимых деталей.');
+            }
+
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z) || 1;
+
+            model.position.sub(center);
+            model.scale.multiplyScalar(MODEL_FIT_SIZE / maxDim);
+            model.updateMatrixWorld(true);
+
+            return getVisibleModelBox(model);
         }
 
         function isTransparentSurface(material) {
@@ -1723,26 +1744,8 @@
                 loadedModel = model;
                 hideInteriorMeshes(model);
 
-                const box = getVisibleModelBox(model);
-                if (box.isEmpty()) {
-                    box.setFromObject(model);
-                }
-                if (box.isEmpty()) {
-                    throw new Error('Модель не содержит видимых деталей.');
-                }
-
-                const center = box.getCenter(new THREE.Vector3());
-                const size = box.getSize(new THREE.Vector3());
-
-                model.position.sub(center);
-
-                const maxDim = Math.max(size.x, size.y, size.z);
-                const scale = MODEL_FIT_SIZE / maxDim;
-                model.scale.setScalar(scale);
-
                 scene.add(model);
-
-                const finalBox = getVisibleModelBox(model);
+                const finalBox = fitModelToScene(model);
                 shadowGround.position.y = finalBox.min.y - 0.01;
 
                 const distance = MODEL_FIT_SIZE * 0.9;
