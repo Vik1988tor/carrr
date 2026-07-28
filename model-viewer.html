@@ -597,9 +597,9 @@
         </div>
 
         <div class="control-group">
-            <label>Яркость<span class="value-display" id="intensityValue">80</span></label>
+            <label>Яркость<span class="value-display" id="intensityValue">150</span></label>
             <button class="reset-param-btn" id="resetIntensity">Сброс</button>
-            <input type="range" id="lightIntensity" min="0" max="200" value="80" step="5">
+            <input type="range" id="lightIntensity" min="0" max="300" value="150" step="5">
         </div>
 
         <div class="control-group">
@@ -882,7 +882,7 @@
             material.metalness = currentMetalness;
 
             const clearcoat = getBodyClearcoat(currentRoughness);
-            const envMapIntensity = 0.35 + clearcoat * 0.65;
+            const envMapIntensity = 0.04 + clearcoat * 0.22;
 
             if (material.isMeshPhysicalMaterial) {
                 material.clearcoat = clearcoat;
@@ -1253,13 +1253,13 @@
         }
 
         // Освещение
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.12);
         scene.add(ambientLight);
 
-        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x2a2a2a, 0.35);
+        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x2a2a2a, 0.1);
         scene.add(hemisphereLight);
 
-        const pointLight = new THREE.PointLight(0xffffff, 80, 0, 2);
+        const pointLight = new THREE.PointLight(0xffffff, 150, 0, 1);
         pointLight.position.set(5, 10, 7.5);
         pointLight.castShadow = false;
         pointLight.shadow.mapSize.set(2048, 2048);
@@ -1307,7 +1307,7 @@
         lightHelper.visible = false;
         scene.add(lightHelper);
 
-        const fillLight = new THREE.PointLight(0xffffff, 18, 0, 2);
+        const fillLight = new THREE.PointLight(0xffffff, 10, 0, 1);
         fillLight.position.set(-5, 5, -5);
         scene.add(fillLight);
 
@@ -1316,7 +1316,7 @@
             angle: 0,
             elevation: 45,
             distance: 7.5,
-            intensity: 80,
+            intensity: 150,
             temperature: 5500
         };
 
@@ -1359,24 +1359,16 @@
 
         function applyLightPosition() {
             if (isLightAttachedToModel) {
-                // Режим: свет вращается вместе с видом (относительно камеры)
-                // Преобразуем базовую позицию света в пространство камеры
-                const lightPosInCameraSpace = baseLightPosition.clone();
-
-                // Получаем поворот камеры относительно начальной позиции
-                const cameraRotation = new THREE.Quaternion();
-                camera.getWorldQuaternion(cameraRotation);
-
-                // Применяем поворот камеры к позиции света
-                lightPosInCameraSpace.applyQuaternion(cameraRotation);
-
-                pointLight.position.copy(lightPosInCameraSpace);
-                lightHelper.position.copy(lightPosInCameraSpace);
+                const lightOffset = baseLightPosition.clone();
+                lightOffset.applyQuaternion(camera.quaternion);
+                pointLight.position.copy(lightOffset);
+                lightHelper.position.copy(lightOffset);
             } else {
-                // Режим: свет остается на месте в мировых координатах
                 pointLight.position.copy(baseLightPosition);
                 lightHelper.position.copy(baseLightPosition);
             }
+
+            pointLight.updateMatrixWorld();
             updateShadowLight();
         }
 
