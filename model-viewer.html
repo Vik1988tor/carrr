@@ -802,10 +802,7 @@
         let loadedModel = null;
         let isModelLoading = true;
         const MODEL_FIT_SIZE = 4;
-        const BODY_PAINT_MATERIAL_PATTERN = /carbody_paint|body.?paint/i;
         const EXCLUDED_COLOR_MESH_PATTERN = /glass|window|greenhouse|windshield|light|lamp|drl|taillight|headlight|interior|seat|armrest|screen|steering|stw_/i;
-        const EXCLUDED_PBR_MESH_PATTERN = /glass|window|greenhouse|windshield|tire|tyre|wheel|rim|chrome|light|lamp|drl|taillight|headlight|interior|mirror|brake|disc|rubber|seat|armrest|screen|steering|stw_/i;
-        const INCLUDED_PBR_MATERIAL_PATTERN = /body|paint|car|lacquer|shell|exterior|default|adskmat/i;
         const MODEL_CANDIDATES = [
             new URL('Atom_simple.glb', import.meta.url).href,
             new URL('modelCinema.gltf', import.meta.url).href
@@ -823,20 +820,6 @@
             return material.isMeshPhysicalMaterial && material.transmission > 0;
         }
 
-        function isBodyPaintSurface(material, mesh) {
-            if (!material?.isMaterial) return false;
-
-            const matName = (material.name || '').toLowerCase();
-            if (!BODY_PAINT_MATERIAL_PATTERN.test(matName)) return false;
-
-            const label = getSurfaceLabel(material, mesh);
-            if (/glass|window|greenhouse|windshield|light|lamp|drl|taillight|headlight/i.test(label)) {
-                return false;
-            }
-
-            return true;
-        }
-
         function getBodyClearcoat(roughness) {
             return Math.max(0, Math.min(1, 1.15 - roughness * 1.7));
         }
@@ -846,16 +829,20 @@
             return Math.min(Math.max(roughness * 0.45, 0.06), 0.4);
         }
 
-        function applyBodyPaintPbr(material) {
+        function applyExteriorPbr(material) {
             material.roughness = currentRoughness;
             material.metalness = currentMetalness;
 
-            if (!material.isMeshPhysicalMaterial) return;
-
             const clearcoat = getBodyClearcoat(currentRoughness);
-            material.clearcoat = clearcoat;
-            material.clearcoatRoughness = getBodyClearcoatRoughness(currentRoughness, clearcoat);
-            material.envMapIntensity = 0.35 + clearcoat * 0.65;
+            const envMapIntensity = 0.35 + clearcoat * 0.65;
+
+            if (material.isMeshPhysicalMaterial) {
+                material.clearcoat = clearcoat;
+                material.clearcoatRoughness = getBodyClearcoatRoughness(currentRoughness, clearcoat);
+                material.envMapIntensity = envMapIntensity;
+            } else if (material.isMeshStandardMaterial) {
+                material.envMapIntensity = envMapIntensity;
+            }
         }
 
         function isColorableSurface(material, mesh) {
@@ -869,19 +856,6 @@
             if (/glass|chrome|rubber/i.test(matName)) return false;
 
             return true;
-        }
-
-        function isPaintableSurface(material, mesh) {
-            if (!material?.isMaterial || !isColorableSurface(material, mesh)) return false;
-
-            const label = getSurfaceLabel(material, mesh);
-            if (EXCLUDED_PBR_MESH_PATTERN.test(label)) return false;
-
-            const matName = (material.name || '').toLowerCase();
-            if (BODY_PAINT_MATERIAL_PATTERN.test(matName)) return true;
-            if (INCLUDED_PBR_MATERIAL_PATTERN.test(label)) return true;
-
-            return material.isMeshStandardMaterial || material.isMeshPhysicalMaterial;
         }
 
         function disposeModelResources(model) {
@@ -908,35 +882,38 @@
             btn.disabled = isModelLoading || !loadedModel;
         }
 
-        function upgradeMaterialToPhysical(material, mesh) {
+        function ensureExteriorMaterial(material, mesh) {
             if (!material || !material.isMaterial) return material;
-            if (!isBodyPaintSurface(material, mesh)) return material;
+            if (!isColorableSurface(material, mesh)) return material;
 
             try {
                 if (material.isMeshPhysicalMaterial) {
-                    applyBodyPaintPbr(material);
+                    applyExteriorPbr(material);
                     return material;
                 }
 
+                const physicalProps = {
+                    name: material.name,
+                    color: material.color,
+                    map: material.map,
+                    normalMap: material.normalMap,
+                    aoMap: material.aoMap,
+                    emissive: material.emissive,
+                    emissiveMap: material.emissiveMap,
+                    transparent: material.transparent,
+                    opacity: material.opacity,
+                    side: material.side,
+                    vertexColors: material.vertexColors
+                };
+
                 if (material.isMeshStandardMaterial) {
-                    const physical = new THREE.MeshPhysicalMaterial({
-                        name: material.name,
-                        color: material.color,
-                        roughness: material.roughness,
-                        metalness: material.metalness,
-                        map: material.map,
-                        normalMap: material.normalMap,
-                        aoMap: material.aoMap,
-                        emissive: material.emissive,
-                        emissiveMap: material.emissiveMap,
-                        transparent: material.transparent,
-                        opacity: material.opacity,
-                        side: material.side,
-                        vertexColors: material.vertexColors
-                    });
-                    applyBodyPaintPbr(physical);
-                    return physical;
+                    physicalProps.roughness = material.roughness;
+                    physicalProps.metalness = material.metalness;
                 }
+
+                const physical = new THREE.MeshPhysicalMaterial(physicalProps);
+                applyExteriorPbr(physical);
+                return physical;
             } catch (error) {
                 console.warn('Не удалось обновить материал, используем исходный:', error);
             }
@@ -949,9 +926,9 @@
                 if (!child.isMesh) return;
 
                 if (Array.isArray(child.material)) {
-                    child.material = child.material.map((mat) => upgradeMaterialToPhysical(mat, child));
+                    child.material = child.material.map((mat) => ensureExteriorMaterial(mat, child));
                 } else {
-                    child.material = upgradeMaterialToPhysical(child.material, child);
+                    child.material = ensureExteriorMaterial(child.material, child);
                 }
             });
             applyShadowSettings();
@@ -1672,13 +1649,6 @@
             setModelColor(baseColor);
         }
 
-        // Проверка поддержки PBR свойств материалом
-        function supportsPBRProperties(material) {
-            return material.isMeshStandardMaterial ||
-                   material.isMeshPhysicalMaterial ||
-                   (material.roughness !== undefined && material.metalness !== undefined);
-        }
-
         // Главная функция обновления свойств материала
         function updateMaterialProperties() {
             if (!loadedModel) return;
@@ -1693,11 +1663,8 @@
                 materials.forEach((mat) => {
                     if (!mat || !mat.isMaterial) return;
 
-                    if (isBodyPaintSurface(mat, child)) {
-                        applyBodyPaintPbr(mat);
-                    } else if (supportsPBRProperties(mat) && isPaintableSurface(mat, child)) {
-                        mat.roughness = currentRoughness;
-                        mat.metalness = currentMetalness;
+                    if (isColorableSurface(mat, child)) {
+                        applyExteriorPbr(mat);
                     }
 
                     mat.needsUpdate = true;
