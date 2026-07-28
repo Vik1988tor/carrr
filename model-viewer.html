@@ -1261,10 +1261,10 @@
         }
 
         // Освещение
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.12);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.28);
         scene.add(ambientLight);
 
-        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x2a2a2a, 0.1);
+        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.22);
         scene.add(hemisphereLight);
 
         const pointLight = new THREE.PointLight(0xffffff, 150, 0, 1);
@@ -1649,17 +1649,77 @@
         // Загрузка GLTF модели
         const loader = new GLTFLoader();
         const loadingElement = document.getElementById('loading');
+        const DEFAULT_MODEL_COLOR_HEX = '#cccccc';
+        let modelLoadTimeoutId = null;
+
+        function clearModelLoadTimeout() {
+            if (modelLoadTimeoutId !== null) {
+                clearTimeout(modelLoadTimeoutId);
+                modelLoadTimeoutId = null;
+            }
+        }
+
+        function formatMegabytes(bytes) {
+            return (bytes / (1024 * 1024)).toFixed(1);
+        }
+
+        function showLoadingMessage(message) {
+            loadingElement.style.display = 'block';
+            loadingElement.textContent = message;
+            loadingElement.style.background = 'rgba(0, 0, 0, 0.8)';
+        }
 
         function showLoadingError(message) {
+            clearModelLoadTimeout();
             loadingElement.style.display = 'block';
             loadingElement.textContent = message;
             loadingElement.style.background = 'rgba(200, 0, 0, 0.8)';
+        }
+
+        function hideLoadingOverlay() {
+            loadingElement.style.display = 'none';
+        }
+
+        function applyDefaultModelAppearance() {
+            const defaultPresetColor = new THREE.Color(DEFAULT_MODEL_COLOR_HEX);
+            setModelColor(defaultPresetColor);
+            updateMaterialProperties();
+            updateLightPosition();
+
+            if (typeof colorPreview !== 'undefined' && typeof hueValue !== 'undefined') {
+                colorPreview.style.backgroundColor = DEFAULT_MODEL_COLOR_HEX;
+                hueValue.textContent = 'серый';
+            }
+            if (typeof colorPresetBtns !== 'undefined') {
+                colorPresetBtns.forEach((btn) => {
+                    if (btn.getAttribute('data-color') === DEFAULT_MODEL_COLOR_HEX) {
+                        btn.classList.add('active');
+                        activePresetBtn = btn;
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+            }
+            isGrayMode = true;
+        }
+
+        function finalizeLoadedModel(model, modelPath) {
+            try {
+                setupModelForExportQuality(model);
+                applyDefaultModelAppearance();
+                loadEnvironmentMap();
+                console.log('Модель успешно загружена:', modelPath);
+            } catch (error) {
+                console.error('Ошибка подготовки материалов:', modelPath, error);
+                showLoadingError(`Ошибка подготовки материалов: ${error.message}`);
+            }
         }
 
         function handleLoadedModel(gltf, modelPath) {
             const model = gltf.scene;
 
             try {
+                clearModelLoadTimeout();
                 loadedModel = model;
                 hideInteriorMeshes(model);
 
@@ -1681,7 +1741,6 @@
                 model.scale.setScalar(scale);
 
                 scene.add(model);
-                setupModelForExportQuality(model);
 
                 const finalBox = getVisibleModelBox(model);
                 shadowGround.position.y = finalBox.min.y - 0.01;
@@ -1694,34 +1753,19 @@
 
                 initialCameraPosition.copy(camera.position);
 
-                const defaultPresetColorHex = '#141414';
-                const defaultPresetColor = new THREE.Color(defaultPresetColorHex);
-                setModelColor(defaultPresetColor);
-                updateMaterialProperties();
-                updateLightPosition();
+                showLoadingMessage('Подготовка модели...');
+                renderer.render(scene, camera);
 
-                if (typeof colorPreview !== 'undefined' && typeof hueValue !== 'undefined') {
-                    colorPreview.style.backgroundColor = defaultPresetColorHex;
-                    hueValue.textContent = 'пресет';
-                }
-                if (typeof colorPresetBtns !== 'undefined') {
-                    colorPresetBtns.forEach(btn => {
-                        if (btn.getAttribute('data-color') === defaultPresetColorHex) {
-                            btn.classList.add('active');
-                            activePresetBtn = btn;
-                        } else {
-                            btn.classList.remove('active');
-                        }
-                    });
-                }
-                isGrayMode = false;
-                isModelLoading = false;
+                requestAnimationFrame(() => {
+                    renderer.render(scene, camera);
+                    isModelLoading = false;
+                    hideLoadingOverlay();
+                    updateExportButtonState();
 
-                loadingElement.style.display = 'none';
-                loadEnvironmentMap();
-                updateExportButtonState();
-
-                console.log('Модель успешно загружена:', modelPath);
+                    window.setTimeout(() => {
+                        finalizeLoadedModel(model, modelPath);
+                    }, 0);
+                });
             } catch (error) {
                 console.error('Ошибка обработки модели:', modelPath, error);
                 scene.remove(model);
@@ -1734,12 +1778,13 @@
 
         function tryLoadModel(candidateIndex = 0) {
             if (candidateIndex >= MODEL_CANDIDATES.length) {
+                clearModelLoadTimeout();
                 isModelLoading = false;
                 updateExportButtonState();
                 if (window.location.protocol === 'file:') {
                     showLoadingError('Модель недоступна через file://. Запустите python3 -m http.server 8765 и откройте http://localhost:8765/model-viewer.html');
                 } else {
-                    showLoadingError('Не удалось загрузить модель. Проверьте, что Atom_simple.glb лежит рядом с HTML и есть интернет для Three.js.');
+                    showLoadingError('Не удалось загрузить модель. Обновите страницу (Cmd+Shift+R) и проверьте интернет.');
                 }
                 return;
             }
@@ -1747,12 +1792,16 @@
             const modelPath = MODEL_CANDIDATES[candidateIndex];
             isModelLoading = true;
             updateExportButtonState();
+            clearModelLoadTimeout();
 
-            loadingElement.style.display = 'block';
-            loadingElement.textContent = candidateIndex === 0
-                ? 'Загрузка модели'
-                : 'Пробуем запасную модель...';
-            loadingElement.style.background = 'rgba(0, 0, 0, 0.8)';
+            modelLoadTimeoutId = window.setTimeout(() => {
+                if (!isModelLoading) return;
+                showLoadingMessage('Загрузка занимает дольше обычного (~40 МБ). Подождите ещё немного...');
+            }, 90000);
+
+            showLoadingMessage(candidateIndex === 0
+                ? 'Загрузка модели (~40 МБ)...'
+                : 'Пробуем запасную модель...');
 
             if (loadedModel) {
                 disposeModelResources(loadedModel);
@@ -1766,7 +1815,9 @@
                 (progress) => {
                     if (progress.total) {
                         const percent = Math.min(100, Math.round(progress.loaded / progress.total * 100));
-                        loadingElement.textContent = `Загрузка модели ${percent}%`;
+                        loadingElement.textContent = `Загрузка модели ${percent}% (${formatMegabytes(progress.loaded)} / ${formatMegabytes(progress.total)} МБ)`;
+                    } else if (progress.loaded) {
+                        loadingElement.textContent = `Загрузка модели... (${formatMegabytes(progress.loaded)} МБ)`;
                     }
                 },
                 (error) => {
@@ -1913,9 +1964,9 @@
             }
         });
 
-        // Инициализация цвета превью (по умолчанию чёрный пресет)
-        colorPreview.style.backgroundColor = '#141414';
-        hueValue.textContent = 'пресет';
+        // Инициализация цвета превью (серый по умолчанию — хорошо виден на тёмном фоне)
+        colorPreview.style.backgroundColor = DEFAULT_MODEL_COLOR_HEX;
+        hueValue.textContent = 'серый';
 
         // Обработчик контрастности
         contrastSlider.addEventListener('input', (e) => {
