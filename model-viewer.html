@@ -823,6 +823,41 @@
             return material.isMeshPhysicalMaterial && material.transmission > 0;
         }
 
+        function isBodyPaintSurface(material, mesh) {
+            if (!material?.isMaterial) return false;
+
+            const matName = (material.name || '').toLowerCase();
+            if (!BODY_PAINT_MATERIAL_PATTERN.test(matName)) return false;
+
+            const label = getSurfaceLabel(material, mesh);
+            if (/glass|window|greenhouse|windshield|light|lamp|drl|taillight|headlight/i.test(label)) {
+                return false;
+            }
+
+            return true;
+        }
+
+        function getBodyClearcoat(roughness) {
+            return Math.max(0, Math.min(1, 1.15 - roughness * 1.7));
+        }
+
+        function getBodyClearcoatRoughness(roughness, clearcoat) {
+            if (clearcoat <= 0.01) return 1;
+            return Math.min(Math.max(roughness * 0.45, 0.06), 0.4);
+        }
+
+        function applyBodyPaintPbr(material) {
+            material.roughness = currentRoughness;
+            material.metalness = currentMetalness;
+
+            if (!material.isMeshPhysicalMaterial) return;
+
+            const clearcoat = getBodyClearcoat(currentRoughness);
+            material.clearcoat = clearcoat;
+            material.clearcoatRoughness = getBodyClearcoatRoughness(currentRoughness, clearcoat);
+            material.envMapIntensity = 0.35 + clearcoat * 0.65;
+        }
+
         function isColorableSurface(material, mesh) {
             if (!material?.isMaterial || material.color === undefined) return false;
             if (isTransparentSurface(material)) return false;
@@ -875,13 +910,11 @@
 
         function upgradeMaterialToPhysical(material, mesh) {
             if (!material || !material.isMaterial) return material;
-            if (!isPaintableSurface(material, mesh)) return material;
+            if (!isBodyPaintSurface(material, mesh)) return material;
 
             try {
                 if (material.isMeshPhysicalMaterial) {
-                    material.clearcoat = 1.0;
-                    material.clearcoatRoughness = 0.08;
-                    material.envMapIntensity = 1.0;
+                    applyBodyPaintPbr(material);
                     return material;
                 }
 
@@ -901,9 +934,7 @@
                         side: material.side,
                         vertexColors: material.vertexColors
                     });
-                    physical.clearcoat = 1.0;
-                    physical.clearcoatRoughness = 0.08;
-                    physical.envMapIntensity = 1.0;
+                    applyBodyPaintPbr(physical);
                     return physical;
                 }
             } catch (error) {
@@ -1662,15 +1693,11 @@
                 materials.forEach((mat) => {
                     if (!mat || !mat.isMaterial) return;
 
-                    if (supportsPBRProperties(mat) && isPaintableSurface(mat, child)) {
+                    if (isBodyPaintSurface(mat, child)) {
+                        applyBodyPaintPbr(mat);
+                    } else if (supportsPBRProperties(mat) && isPaintableSurface(mat, child)) {
                         mat.roughness = currentRoughness;
                         mat.metalness = currentMetalness;
-                    }
-
-                    if (mat.isMeshPhysicalMaterial && isPaintableSurface(mat, child)) {
-                        mat.clearcoat = 1.0;
-                        mat.clearcoatRoughness = Math.min(currentRoughness * 0.15, 0.12);
-                        mat.envMapIntensity = 1.0;
                     }
 
                     mat.needsUpdate = true;
